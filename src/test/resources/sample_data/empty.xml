@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ind_Individual>
+  <Old>
+    <IndividualID>1923A2</IndividualID>
+    <ClientIdentifier>ABC123</ClientIdentifier>
+  </Old>
+  <New>
+    <IndividualID>Bdd12</IndividualID>
+    <ClientIdentifier>XYZ789</ClientIdentifier>
+  </New>
+</ind_Individual>

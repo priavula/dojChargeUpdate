@@ -1,0 +1,1564 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:os="http://www.mulesoft.org/schema/mule/os"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:compatibility="http://www.mulesoft.org/schema/mule/compatibility"
+	xmlns:db="http://www.mulesoft.org/schema/mule/db"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:email="http://www.mulesoft.org/schema/mule/email"
+	xmlns:file="http://www.mulesoft.org/schema/mule/file"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns:scripting="http://www.mulesoft.org/schema/mule/scripting"
+	xmlns:sftp="http://www.mulesoft.org/schema/mule/sftp"
+	xmlns:spring-module="http://www.mulesoft.org/schema/mule/spring"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/email http://www.mulesoft.org/schema/mule/email/current/mule-email.xsd http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd http://www.mulesoft.org/schema/mule/scripting http://www.mulesoft.org/schema/mule/scripting/current/mule-scripting.xsd http://www.mulesoft.org/schema/mule/sftp http://www.mulesoft.org/schema/mule/sftp/current/mule-sftp.xsd http://www.mulesoft.org/schema/mule/spring http://www.mulesoft.org/schema/mule/spring/current/mule-spring.xsd http://www.mulesoft.org/schema/mule/file http://www.mulesoft.org/schema/mule/file/current/mule-file.xsd http://www.mulesoft.org/schema/mule/compatibility http://www.mulesoft.org/schema/mule/compatibility/current/mule-compatibility.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/os http://www.mulesoft.org/schema/mule/os/current/mule-os.xsd">
+
+	<configuration-properties
+		file="${env}.properties" />
+
+	<configuration doc:name="Configuration"
+		defaultResponseTimeout="180000"
+		 defaultErrorHandler-ref="Global_Exception_strategy"/>
+
+	<sftp:config name="SFTP_Connecter" doc:name="Custom_SFTP">
+		<sftp:connection host="${sftp.inbdoj.host}"
+			port="${sftp.inbdoj.port}" username="${sftp.inbdoj.user}"
+			password="${sftp.inbdoj.password}" connectionTimeout="10000"
+			connectionTimeoutUnit="MILLISECONDS">
+			<reconnection failsDeployment="true">
+				<reconnect-forever />
+			</reconnection>
+		</sftp:connection>
+	</sftp:config>
+
+	<file:config name="IncomingFile" doc:name="File">
+		<file:connection workingDir=".">
+			<reconnection failsDeployment="true" />
+		</file:connection>
+	</file:config>
+
+	<http:request-config name="HTTPS_caseSyncREST"
+		basePath="/mule/rest_api/" doc:name="HTTP Request Configuration"
+		responseTimeout="180000">
+		<http:request-connection
+			host="${caseSync.host}" port="${caseSync.port}"
+			connectionIdleTimeout="5000" />
+	</http:request-config>
+
+	<!-- <queued-asynchronous-processing-strategy
+		name="Queued_Asynchronous_Processing_Strategy" maxThreads="5"
+		minThreads="3" poolExhaustedAction="WAIT" threadWaitTimeout="240000"
+		threadTTL="5000" doc:name="Queued Asynchronous Processing Strategy" /> -->
+
+	<os:object-store name="sftp_creds_os"
+		doc:name="Object store" doc:id="8448ea9d-f682-444c-808c-1f0c272478d1" />
+	<global-property doc:name="Global Property" doc:id="0b6a52c1-fc74-4204-acb6-b474bf9ea1f7" name="env" value="local" />
+	<error-handler name="Global_Exception_strategy">
+        <on-error-continue doc:name="Sftp Exception Strategy" enableNotifications="true" logException="true" type="SFTP:CONNECTIVITY">
+            <logger message="Exception Caused in SFTP Process" level="INFO" doc:name="Logger" />
+            <flow-ref name="get_Latest_PW" doc:name="Get Latest PW" />
+        </on-error-continue>
+        <on-error-continue doc:name="Default Exception Strategy">
+            <logger message="#['\n::: Exception Cause: ' ++ error.cause as String ++ '\n::: Exception: ' ++ error.description as String ++ '\n::: Payload: ' ++ error.errorMessage.payload as String default &quot;&quot;]" level="INFO" doc:name="Logger">
+            </logger>
+            <ee:transform doc:name="Setup variables needed for error handling" doc:id="4e9ffb31-eae4-4ce3-9353-111ceb302032" >
+				<ee:message >
+				</ee:message>
+				<ee:variables >
+					<ee:set-variable variableName="subject" ><![CDATA['[' ++ app.name ++ ']  - DOJ Charge Update File - ' ++ error.cause.class as String]]></ee:set-variable>
+					<ee:set-variable variableName="txnId" ><![CDATA[%dw 2.0
+output application/java
+---
+if(vars.txnID == null)
+	correlationId
+else vars.txnID
+]]></ee:set-variable>
+				</ee:variables>
+			</ee:transform>
+			<logger message="#['\n::: The process is purposely paused and retry for this record in  inboundCLPDataTest file: ' ++ (vars.fileName default &quot;&quot;) ++ 'OldIndID:' ++ (vars.oldIndID default &quot;&quot;) ++ ', NewIndID:' ++ (vars.newIndID default &quot;&quot;) ++ '.  OldClientID:' ++ (vars.oldClientID default &quot;&quot;) ++ ', NewClientID:' ++ (vars.newClientID default &quot;&quot;)]" level="INFO" doc:name="retry" />
+            <flow-ref name="emailError" doc:name="emailError" target="emailPayload"/>
+            <file:write path="#[p('sftp.archiveerror.dir') ++ '/' ++ vars.fileName]" config-ref="IncomingFile"  doc:name="saveFiletoErrorFolder" />
+        </on-error-continue>
+    </error-handler>
+
+
+    <email:smtp-config name="SMTP">
+        <email:smtp-connection host="${smtp.host}" port="${smtp.port}" />
+    </email:smtp-config>
+
+    <!-- <spring-module:config name="springConfig_dojChargeUpdate" files="spring/dojChargeUpdate-beans.xml" /> -->
+
+    <sub-flow name="get_Latest_PW">
+        <db:select config-ref="DB2_Config_OTS" doc:name="Database" target="prpSelectQuery1">
+            
+            <db:sql><![CDATA[SELECT VALUE FROM GAAOWN.GAVPRP1 
+WHERE NAME = 'SFTP_TEST_USER';]]></db:sql>
+        </db:select>
+        <os:store doc:name="sftpUser" doc:id="09198084-44ad-4b3c-8125-e219ddad4230" objectStore="sftp_creds_os" key="sftpUser">
+			<os:value ><![CDATA[#[vars.prpSelectQuery1[0].'VALUE']]]></os:value>
+		</os:store>
+        <db:select config-ref="DB2_Config_OTS" doc:name="Database" target="prpSelectQuery2">
+            
+            <db:sql><![CDATA[SELECT VALUE FROM GAAOWN.GAVPRP1 
+WHERE NAME = 'SFTP_TEST_PW';]]></db:sql>
+        </db:select>
+        <os:store doc:name="sftpPW" doc:id="47cfb255-782f-4057-ae11-61e0ee409b2d" key="sftpPW" objectStore="sftp_creds_os">
+			<os:value ><![CDATA[#[vars.prpSelectQuery2[0].'VALUE']]]></os:value>
+		</os:store>
+    </sub-flow>
+
+    <sub-flow name="emailError">
+        
+        <parse-template location="templates/exceptionEmailTemplate.html" doc:name="Parse Email Template" />
+        <email:send doc:name="Send Email" config-ref="ITD_SMTP" fromAddress="#[p('smtp.email.from')]" subject="#[vars.subject]">
+          
+            <email:to-addresses >
+				<email:to-address value="#[p('smtp.email.to')]" />
+			</email:to-addresses>
+			<email:body contentType="text/html">
+            </email:body>
+        </email:send>
+    </sub-flow>
+
+    <flow name="Mainflow_dojChargeUpdatexml" maxConcurrency="1">
+        
+        <sftp:listener config-ref="SFTP_Connecter" directory="${sftp.inbdoj.path}" doc:name="DOJ_SFTP" autoDelete="true">
+            <scheduling-strategy>
+                <fixed-frequency frequency="${sftp.polling.frequency}" />
+            </scheduling-strategy>
+        </sftp:listener>
+
+		<set-variable value="#[attributes.fileName]" doc:name="SET FV fileName" doc:id="e5b6207d-4100-4beb-820d-1f1a3273a815" variableName="fileName"/>
+		<set-variable value="#[payload]" doc:name="SET Original payload" doc:id="5c94429b-6be0-4ce1-9a72-5171a82fb247" variableName="originalPayload"/>
+		<logger message="#[payload]" level="INFO" doc:name="Payload" />
+
+        <choice doc:name="Choice">
+            <when expression="#[payload != null]">
+                
+                <ee:transform doc:name="Transform Message" doc:id="fcacbb17-aa21-4d49-960c-c3af7f6d21e6">
+					<ee:variables >
+						<ee:set-variable variableName="recordValue" ><![CDATA[%dw 2.0
+output application/java
+---
+if (payload > ' ')
+	payload[0 to 14]
+else
+	'']]></ee:set-variable>
+					<ee:set-variable variableName="chgInsertFlag" ><![CDATA['N']]></ee:set-variable> 
+					<ee:set-variable variableName="chgUpdateFlag" ><![CDATA['N']]></ee:set-variable> 
+					<ee:set-variable variableName="offInsertFlag" ><![CDATA['N']]></ee:set-variable> 
+					<ee:set-variable variableName="offUpdateFlag" ><![CDATA['N']]></ee:set-variable> 
+					<ee:set-variable variableName="inputRecordCount" ><![CDATA[0]]></ee:set-variable> 
+					<ee:set-variable variableName="validRecordCount" ><![CDATA[0]]></ee:set-variable> 
+					<ee:set-variable variableName="chgInsertCount" ><![CDATA[0]]></ee:set-variable> 
+					<ee:set-variable variableName="chgUpdateCount" ><![CDATA[0]]></ee:set-variable> 
+					<ee:set-variable variableName="offInsertCount" ><![CDATA[0]]></ee:set-variable> 
+					<ee:set-variable variableName="offUpdateCount" ><![CDATA[0]]></ee:set-variable> 
+					<ee:set-variable variableName="errorCount" ><![CDATA[0]]></ee:set-variable> 
+					<ee:set-variable variableName="currentDate" ><![CDATA[%dw 2.0
+output application/json
+---
+now() as Date {"format": "yyyyMMdd"}]]></ee:set-variable>
+			
+					</ee:variables>
+				</ee:transform>
+				<foreach collection='#[payload splitBy("\n")]' doc:name="For Each">
+                    
+                    <logger message="#[payload]" level="INFO" doc:name="Logger" />
+                    <ee:transform doc:name="Transform Message" doc:id="919b1668-ea0a-4b4e-a804-2a8973d41a9c" >
+						<ee:message >
+						</ee:message>
+						<ee:variables >
+							<ee:set-variable variableName="recordType" ><![CDATA[%dw 2.0
+output application/java
+---
+if (payload > ' ')
+	payload[9 to 14]
+else
+	''
+
+]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+					<choice doc:name="Choice">
+                        <when expression="#[vars.recordType == 'CHSOFF']">
+                            <logger message="Invalid Record" level="INFO" doc:name="Logger1" />
+                        </when>
+                        <when expression="#[vars.recordType == 'LOADOF']">
+                            <flow-ref name="temp_Flow" doc:name="Load Off-Temp-Flow" />
+                        </when>
+                        <otherwise>
+                        	<ee:transform doc:id="74fe2a61-5c50-4ef5-9481-b0cf26ed36b7">
+								
+								<ee:variables >
+									<ee:set-variable variableName="validationCode" ><![CDATA[%dw 2.0
+output application/java
+---
+//flowVars.validationCode=payload.substring(0,2);
+if(payload[0 to 1] == '  ')
+	99
+else
+	payload[0 to 1]]]></ee:set-variable>
+									<ee:set-variable variableName="transactionType" ><![CDATA[%dw 2.0
+output application/java
+---
+//flowVars.transactionType=payload.substring(7,9);
+if(payload[7 to 8] == '  ')
+	99
+else
+	payload[7 to 8]]]></ee:set-variable>
+									<ee:set-variable variableName="chargeCode" ><![CDATA[payload[9 to 33]]]></ee:set-variable>
+									<ee:set-variable variableName="inputRecordCount" ><![CDATA[vars.inputRecordCount+1]]></ee:set-variable> 
+									<ee:set-variable variableName="cjisCode" ><![CDATA[payload[2 to 6]]]></ee:set-variable> 
+									<ee:set-variable variableName="icjisCode" ><![CDATA[payload[2 to 6]]]></ee:set-variable> 
+									<ee:set-variable variableName="chargeCodeOff" ><![CDATA[payload[9 to 33]]]></ee:set-variable> 
+									<ee:set-variable variableName="chargeStatute" ><![CDATA[payload[34 to 35]]]></ee:set-variable> 
+									<ee:set-variable variableName="chargeDesc" ><![CDATA[payload[36 to 60]]]></ee:set-variable> 
+									<ee:set-variable variableName="defaultChargeType" ><![CDATA[payload[61 to 61]]]></ee:set-variable> 
+									<ee:set-variable variableName="chargeFlag" ><![CDATA[payload[62 to 62]]]></ee:set-variable> 
+									<ee:set-variable variableName="chargeIdentifier" ><![CDATA[payload[63 to 66]]]></ee:set-variable> 
+									<ee:set-variable variableName="chargeDegree" ><![CDATA[payload[67 to 67]]]></ee:set-variable> 
+									<ee:set-variable variableName="chargeEffDate" ><![CDATA[%dw 2.0
+output application/java
+var original = payload[74 to 81]
+var tempDD = original[6 to 7]
+var tempMM = original[4 to 5]
+var tempYYYY = original[0 to 3]
+---
+if (sizeOf(original) == 8)
+	tempMM ++ "/" ++ tempDD ++ "/" ++ tempYYYY
+else
+	'NULL']]></ee:set-variable> 
+									<ee:set-variable variableName="chargeInactDateYMD"><![CDATA[payload[82 to 89]]]></ee:set-variable>
+									<ee:set-variable variableName="chargeInactDate" ><![CDATA[%dw 2.0
+output application/java
+var original = payload[82 to 89]
+var dateDD = original[6 to 7]
+var dateMM = original[4 to 5]
+var dateYYYY = original[0 to 3] 
+---
+if (sizeOf(original) == 8 and original != '99999999' and original != '        ')
+	dateMM ++ "/" ++ dateDD ++ "/" ++ dateYYYY
+else
+	'NULL'
+]]></ee:set-variable> 
+									<ee:set-variable variableName="alpsCognizant" ><![CDATA[payload[90 to 90]]]></ee:set-variable> 
+									<ee:set-variable variableName="lastUpdateID" ><![CDATA['CRIMS']]></ee:set-variable>
+									<ee:set-variable variableName="chargeHierarchyCode" ><![CDATA[%dw 2.0
+output application/java
+---
+//flowVars.chargeHierarchyCode=payload.substring(68,74);
+if(payload[68 to 73] == '      ')
+	999999
+else
+	payload[68 to 73]]]></ee:set-variable>
+									<ee:set-variable variableName="chargeSection" ><![CDATA[%dw 2.0
+output application/java
+var chargeCode = payload[9 to 33]
+---
+if (sizeOf(chargeCode) <= 10)
+  chargeCode
+else
+ trim(chargeCode[0 to 9])]]></ee:set-variable>
+ 									<ee:set-variable variableName="dateDD" ><![CDATA['']]></ee:set-variable> 
+									<ee:set-variable variableName="dateMM" ><![CDATA['']]></ee:set-variable> 
+									<ee:set-variable variableName="dateYYYY" ><![CDATA['']]></ee:set-variable> 
+									<ee:set-variable variableName="arrestChargeFlag" ><![CDATA['Y']]></ee:set-variable> 
+									<ee:set-variable variableName="chargeSumCatCode" ><![CDATA['  ']]></ee:set-variable> 
+									<ee:set-variable variableName="dojFlag" ><![CDATA['Y']]></ee:set-variable> 
+									<ee:set-variable variableName="offenseID" ><![CDATA[0]]></ee:set-variable> 
+									<ee:set-variable variableName="chargeCodeCjisCode" ><![CDATA[payload[9 to 33] as String ++ payload[2 to 6] as String]]></ee:set-variable> 
+									<ee:set-variable variableName="tempA" ><![CDATA['A']]></ee:set-variable> 
+									<ee:set-variable variableName="tempB" ><![CDATA['B']]></ee:set-variable>
+									
+								</ee:variables>
+                        		
+                        	</ee:transform>
+							<set-variable value="#[%dw 2.0&#10;var temp = 'A' ++ vars.chargeSection as String&#10;output application/java&#10;---&#10;if (sizeOf(temp) &gt; 10)&#10;  trim(temp[0 to 10])&#10; else&#10; 	temp]" doc:name="chargeSectionATT" doc:id="22ec7c2b-2205-4274-ab56-277ceca5f30e" variableName="chargeSectionATT"/>
+							<logger message="#[&quot;Valid Record - $(vars.cjisCode)&quot;]" level="INFO" doc:name="Logger" />
+                            <db:select config-ref="DB2_Config_OTS" doc:name="CHG Select - CJIS+CC+ST+FL" target="chgSelectQuery0">
+					            
+					            <db:sql><![CDATA[SELECT COUNT(*)   FROM S1AOWN.S1VCHG0 WHERE CJIS_CD = :cjisCode AND CHRG_STATUTE = :chargeStatute AND CHRG_M_F_I_FLAG = :chargeFlag AND  CHRG_CD = :chargeCode;]]></db:sql>
+								<db:input-parameters ><![CDATA[#[{
+    "cjisCode" : vars.cjisCode,
+    "chargeStatute": vars.chargeStatute,
+    "chargeFlag": vars.chargeFlag,
+    "chargeCode": vars.chargeCode
+}]]]></db:input-parameters>
+					        </db:select>
+							<choice doc:name="Choice">
+                                <when expression='#[vars.chgSelectQuery0[0]."1" &gt; 0]'>
+                                    
+                                    <flow-ref name="updateChargeProcess" doc:name="updateChargeProcess" />
+                                    <choice doc:name="Choice">
+                                        <when expression="#[vars.tempA == vars.tempB]">
+                                            <db:select doc:name="CHG Select - CJIS+CC+ST+FL" doc:id="1246b36c-e8a8-4b35-bcac-a56f2db56175" config-ref="DB2_Config_OTS" target="chgSelectQuery1">
+												<db:sql ><![CDATA[SELECT COUNT(*)   FROM S1AOWN.S1VCHG0 WHERE CJIS_CD = :cjisCode AND CHRG_STATUTE = :chargeStatute AND CHRG_M_F_I_FLAG = :chargeFlag AND  CHRG_CD = :chargeCode;]]></db:sql>
+												<db:input-parameters ><![CDATA[#[{
+	"chargeCode": vars.chargeCode,
+    "chargeStatute": vars.chargeStatute,
+    "chargeFlag": vars.chargeFlag,
+    "cjisCode": vars.cjisCode
+}]]]></db:input-parameters>
+											</db:select>
+                                            <choice doc:name="Choice">
+                                                <when expression="#[vars.tempA == vars.tempB]">
+                                                    <flow-ref name="updateChargeProcess" doc:name="UpdateChargeProcess" />
+                                                </when>
+                                                <otherwise>
+													<db:select doc:name="CHG Select - CC+ST+FL" doc:id="6a99fe77-53e2-442a-8f2f-12625d62722e" config-ref="DB2_Config_OTS" target="chgSelectQuery3">
+														<db:sql ><![CDATA[SELECT COUNT(*)   FROM S1AOWN.S1VCHG0 WHERE CHRG_STATUTE = :chargeStatute AND CHRG_M_F_I_FLAG = :chargeFlag AND  CHRG_CD = :chargeCode;]]></db:sql>
+														<db:input-parameters ><![CDATA[#[{
+	"chargeCode": vars.chargeCode,
+    "chargeStatute": vars.chargeStatute,
+    "chargeFlag": vars.chargeFlag
+}]]]></db:input-parameters>
+													</db:select>
+                                                    <choice doc:name="Choice">
+                                                        <when expression='#[vars.chgSelectQuery3[0]."1" &gt; 0]'>
+                                                            
+                                                            <ee:transform doc:name="Expression 123" doc:id="24d73d5f-cbbe-464f-9b4c-4815ed822c33">
+																<ee:message>
+																</ee:message>
+																<ee:variables >
+																	<ee:set-variable variableName="errorCount" ><![CDATA[vars.errorCount as Number default 0 + 1]]></ee:set-variable>
+																</ee:variables>
+															</ee:transform>
+															<logger message="Error - This CJIS Code is with different charge in CHG table" level="INFO" doc:name="Logger" />
+                                                        </when>
+                                                        <otherwise>
+                                                            <ee:transform doc:name="Expression 2" doc:id="50adad1d-8649-4053-b645-d042cbe8e48e">
+																<ee:message>
+																</ee:message>
+																<ee:variables >
+																	<ee:set-variable variableName="arrestChargeFlag" ><![CDATA['N']]></ee:set-variable>
+																	<ee:set-variable variableName="dojFlag" ><![CDATA['N']]></ee:set-variable>
+																	<ee:set-variable variableName="chargeCode" ><![CDATA[vars.chargeCode as String ++ vars.cjisCode as String]]></ee:set-variable>
+																</ee:variables>
+															</ee:transform>
+                                                            <db:select doc:name="CHG Select - CC-CJ+ST+FL" doc:id="876f7ab2-ac2f-4e27-b8d5-74aa67c7f4e2" config-ref="SQLServer_Config_CLP" target="chgSelectQuery4">
+																<db:sql ><![CDATA[SELECT COUNT(*)   FROM S1AOWN.S1VCHG0 WHERE CHRG_STATUTE = :chargeStatute AND CHRG_M_F_I_FLAG = :chargeFlag AND  CHRG_CD = :chargeCode;]]></db:sql>
+																<db:input-parameters ><![CDATA[#[{
+	"chargeCode": vars.chargeCode,
+    "chargeStatute": vars.chargeStatute,
+    "chargeFlag": vars.chargeFlag
+}]]]></db:input-parameters>
+															</db:select>
+                                                            <choice doc:name="Choice">
+                                                                <when expression='#[vars.chgSelectQuery4[0]."1" &gt; 0]'>
+                                                                    
+                                                                    <flow-ref name="updateChargeProcess" doc:name="UpdateChargeProcess" />
+                                                                </when>
+                                                                <otherwise>
+                                                                    <flow-ref name="insertChargeProcess1" doc:name="InsertChargeProcess" />
+                                                                </otherwise>
+                                                            </choice>
+                                                        </otherwise>
+                                                    </choice>
+                                                    <logger level="INFO" doc:name="Logger" />
+                                                </otherwise>
+                                            </choice>
+                                        </when>
+                                        <otherwise>
+                                            <logger message="Test" level="INFO" doc:name="Logger" />
+                                        </otherwise>
+                                    </choice>
+                                </when>
+                                <otherwise>
+                                    <db:select doc:name="CHG Select - CC" doc:id="3930793d-d4e6-4579-829d-083efe0de653" config-ref="DB2_Config_OTS" target="chgSelectQuery2">
+										<db:sql><![CDATA[SELECT CHRG_STATUTE, CHRG_M_F_I_FLAG, CHRG_CD, CHRG_DESC, CHRG_EFF_DATE, CHRG_INACT_DATE,  CHAR(CHRG_INACT_DATE,ISO) AS CHARGE_INACT_DAT, CJIS_CD, CHRG_SECTION, CHRG_SECTION_ATT,  ARREST_CHARGE_FLAG, DOJ_FLAG, CHRG_SUM_CAT_CD  FROM S1AOWN.S1VCHG0  WHERE CHRG_STATUTE = :chargeStatute AND CHRG_M_F_I_FLAG = :chargeFlag AND  CHRG_CD = :chargeCode;]]></db:sql>
+										<db:input-parameters ><![CDATA[#[{
+	"chargeCode": vars.chargeCode,
+    "chargeStatute": vars.chargeStatute,
+    "chargeFlag": vars.chargeFlag
+}]]]></db:input-parameters>
+									</db:select>
+                                    <choice doc:name="Choicexyz">
+                                        <when expression="#[sizeOf(vars.chgSelectQuery2) &gt; 0]">
+                                            <ee:transform doc:name="Expression456" doc:id="24f38cac-ec3a-4065-98ff-7e5f7c298fcf">
+												
+												<ee:variables >
+													<ee:set-variable variableName="ichargeCode" ><![CDATA[vars.chargeCode]]></ee:set-variable> 
+													<ee:set-variable variableName="ichargeDesc" ><![CDATA[vars.chargeDesc]]></ee:set-variable> 
+													<ee:set-variable variableName="ichargeEffDate" ><![CDATA[vars.chargeEffDate]]></ee:set-variable> 
+													<ee:set-variable variableName="ichargeInactDate" ><![CDATA[vars.chargeInactDate]]></ee:set-variable> 
+													<ee:set-variable variableName="icjisCode" ><![CDATA[vars.cjisCode]]></ee:set-variable> 
+													<ee:set-variable variableName="ichargeSection" ><![CDATA[vars.chargeSection]]></ee:set-variable> 
+													<ee:set-variable variableName="ichargeSectionATT" ><![CDATA[vars.chargeSectionATT]]></ee:set-variable> 
+													<ee:set-variable variableName="iarrestChargeFlag" ><![CDATA[vars.arrestChargeFlag]]></ee:set-variable> 
+													<ee:set-variable variableName="idojFlag" ><![CDATA[vars.dojFlag]]></ee:set-variable>
+													<ee:set-variable variableName="chargeDesc" ><![CDATA[vars.chgSelectQuery2[0].'CHRG_DESC']]></ee:set-variable> 
+													<ee:set-variable variableName="chargeEffDate" ><![CDATA[vars.chgSelectQuery2[0].'CHRG_EFF_DATE']]></ee:set-variable> 
+													<ee:set-variable variableName="chargeInactDate" ><![CDATA[vars.chgSelectQuery2[0].'CHRG_INACT_DATE']]></ee:set-variable> 
+													<ee:set-variable variableName="cjisCode" ><![CDATA[vars.chgSelectQuery2[0].'CJIS_CD']]></ee:set-variable> 
+													<ee:set-variable variableName="chargeSection" ><![CDATA[vars.chgSelectQuery2[0].'CHRG_SECTION']]></ee:set-variable> 
+													<ee:set-variable variableName="chargeSectionATT" ><![CDATA[vars.chgSelectQuery2[0].'CHRG_SECTION_ATT']]></ee:set-variable> 
+													<ee:set-variable variableName="arrestChargeFlag" ><![CDATA[vars.chgSelectQuery2[0].'ARREST_CHARGE_FLAG']]></ee:set-variable> 
+													<ee:set-variable variableName="dojFlag" ><![CDATA[vars.chgSelectQuery2[0].'DOJ_FLAG']]></ee:set-variable> 
+													<ee:set-variable variableName="chargeSumCatCode" ><![CDATA[vars.chgSelectQuery2[0].'CHRG_SUM_CAT_CD']]></ee:set-variable>
+													<ee:set-variable variableName="tDate" ><![CDATA[vars.chgSelectQuery2[0].'CHARGE_INACT_DATE' default '']]></ee:set-variable>
+													<ee:set-variable variableName="chgInactiveDate" ><![CDATA[%dw 2.0
+output application/java
+var tDate = vars.chgSelectQuery2[0].'CHARGE_INACT_DATE' default ''
+---
+if (sizeOf(tDate) == 10)
+	tDate[0 to 3] as String ++ tDate[5 to 6] as String ++ tDate[8 to 9] as String
+else
+	'00000000']]></ee:set-variable>
+													
+												</ee:variables>
+											</ee:transform>
+											<db:select doc:name="CHG Select CC=CC+CJ" doc:id="e5754fbc-9e1d-4d86-8252-9de7003e2ccb" config-ref="DB2_Config_OTS" target="chgSelectQuery20">
+												<db:sql><![CDATA[SELECT COUNT(*)   FROM S1AOWN.S1VCHG0 WHERE CHRG_STATUTE = :chargeStatute AND CHRG_M_F_I_FLAG = :chargeFlag AND  CHRG_CD = :chargeCodeCjisCode;]]></db:sql>
+												<db:input-parameters ><![CDATA[#[{
+	"chargeCodeCjisCode": vars.chargeCodeCjisCode,
+    "chargeStatute": vars.chargeStatute,
+    "chargeFlag": vars.chargeFlag
+}]]]></db:input-parameters>
+											</db:select>
+                                            <choice doc:name="Choice">
+                                                <when expression='#[vars.chgSelectQuery20[0]."1" &gt; 0]'>
+
+                                                    <logger message="No Update Required" level="INFO" doc:name="Logger20" />
+                                                    <ee:transform doc:name="Expresion 20" doc:id="9fd7961d-b76e-4d5e-bc56-c9abbf2d391c">
+														
+														<ee:variables > 
+															<ee:set-variable variableName="cjisCode" ><![CDATA[vars.icjisCode]]></ee:set-variable> 
+															<ee:set-variable variableName="chargeDesc" ><![CDATA[vars.ichargeDesc]]></ee:set-variable> 
+															<ee:set-variable variableName="chargeEffDate" ><![CDATA[vars.ichargeEffDate]]></ee:set-variable> 
+															<ee:set-variable variableName="chargeInactDate" ><![CDATA[vars.ichargeInactDate]]></ee:set-variable> 
+															<ee:set-variable variableName="dojFlag" ><![CDATA['N']]></ee:set-variable> 
+															<ee:set-variable variableName="arrestChargeFlag" ><![CDATA['N']]></ee:set-variable>
+															<ee:set-variable variableName="chargeCode" ><![CDATA[vars.chargeCodeCjisCode]]></ee:set-variable>
+														</ee:variables>
+													</ee:transform>
+													<flow-ref name="updateChargeProcess" doc:name="updateChargeProcess20" />
+                                                </when>
+                                                <otherwise>
+                                                    <logger message="#[&quot;Inactive Date + $(vars.tDate) &quot;]" level="INFO" doc:name="Logger" />
+                                                    <choice doc:name="Choice1">
+                                                        <when expression="#[(vars.ichargeInactDate == null) or (vars.chargeInactDateYMD &gt; vars.currentDate)]">
+															<ee:transform doc:name="Expressiony" doc:id="b52c63b6-bd64-4e89-ba84-93113b44fd03">
+																<ee:message>
+																</ee:message>
+																<ee:variables >
+																	<ee:set-variable variableName="arrestChargeFlag" ><![CDATA['N']]></ee:set-variable>
+																	<ee:set-variable variableName="dojFlag" ><![CDATA['N']]></ee:set-variable>
+																	<ee:set-variable variableName="chargeCode" ><![CDATA[output application/java --- (vars.chargeCode as String) ++ (vars.cjisCode as String)]]></ee:set-variable>
+																</ee:variables>
+															</ee:transform>
+															<db:select doc:name="CHG Select - CC" doc:id="e1cb9c7f-cd08-4b2b-8366-cb35f8b426db" config-ref="DB2_Config_OTS" target="chgSelectQuery3">
+																<db:sql><![CDATA[SELECT COUNT(*)   FROM S1AOWN.S1VCHG0  WHERE CHRG_STATUTE = :chargeStatute AND CHRG_M_F_I_FLAG = :chargeFlag AND  CHRG_CD = :chargeCode;]]></db:sql>
+																<db:input-parameters ><![CDATA[#[{
+	"chargeCode": vars.chargeCode,
+    "chargeStatute": vars.chargeStatute,
+    "chargeFlag": vars.chargeFlag
+}]]]></db:input-parameters>
+															</db:select>
+                                                            <choice doc:name="Choice">
+                                                                <when expression='#[vars.chgSelectQuery3[0]."1" &gt; 0]'>
+                                                                    
+                                                                    <logger message="Charge Code with CJIS already there - No need to add" level="INFO" doc:name="Logger" />
+                                                                </when>
+                                                                <otherwise>
+                                                                    <flow-ref name="insertChargeProcess1" doc:name="Insert Charge Process1" />
+                                                                </otherwise>
+                                                            </choice>
+                                                            <ee:transform doc:name="Transform Message" doc:id="21fad984-7a35-41dd-8803-29d77ce11951">
+																
+																<ee:variables >
+																	<ee:set-variable variableName="chargeCode" ><![CDATA[vars.ichargeCode]]></ee:set-variable> 
+																	<ee:set-variable variableName="chargeDesc" ><![CDATA[vars.ichargeDesc]]></ee:set-variable> 
+																	<ee:set-variable variableName="chargeEffDate" ><![CDATA[vars.ichargeEffDate]]></ee:set-variable> 
+																	<ee:set-variable variableName="chargeInactDate" ><![CDATA[vars.ichargeInactDate]]></ee:set-variable> 
+																	<ee:set-variable variableName="chargeSection" ><![CDATA[vars.ichargeSection]]></ee:set-variable> 
+																	<ee:set-variable variableName="chargeSectionATT" ><![CDATA[vars.chargeSectionATT]]></ee:set-variable> 
+																	<ee:set-variable variableName="arrestChargeFlag" ><![CDATA['Y']]></ee:set-variable> 
+																	<ee:set-variable variableName="dojFlag" ><![CDATA['Y']]></ee:set-variable>
+																</ee:variables>
+															</ee:transform>
+															<flow-ref name="updateChargeProcess" doc:name="updateChargeProcess" />
+                                                        </when>
+                                                        <otherwise>
+                                                            <ee:transform doc:name="Expressionz" doc:id="30fed464-1a05-47e6-bf89-e2314a76020d">
+																<ee:message>
+																</ee:message>
+																<ee:variables >
+																	<ee:set-variable variableName="chargeCode" ><![CDATA[vars.chargeCode as String ++ vars.icjisCode as String]]></ee:set-variable>
+																</ee:variables>
+															</ee:transform>
+															<db:select doc:name="CHG Select - CC" doc:id="8a9e5dfa-154e-4f13-8c88-7c1918a857df" config-ref="DB2_Config_OTS" target="chgSelectQuery4">
+																<db:sql><![CDATA[SELECT COUNT(*)   FROM S1AOWN.S1VCHG0  WHERE CHRG_STATUTE = :chargeStatute AND CHRG_M_F_I_FLAG = :chargeFlag AND  CHRG_CD = :chargeCode;]]></db:sql>
+																<db:input-parameters ><![CDATA[#[{
+	"chargeCode": vars.chargeCode,
+    "chargeStatute": vars.chargeStatute,
+    "chargeFlag": vars.chargeFlag
+}]]]></db:input-parameters>
+															</db:select>
+                                                            <choice doc:name="Choice">
+                                                                <when expression='#[vars.chgSelectQuery4[0]."1" &gt; 0]'>
+                                                                    
+                                                                    <logger message="Charge Code with CJIS already there - No need to add" level="INFO" doc:name="Logger" />
+                                                                </when>
+                                                                <otherwise>
+                                                                    <flow-ref name="insertChargeProcess3" doc:name="Insert Charge Process3" />
+                                                                </otherwise>
+                                                            </choice>
+                                                        </otherwise>
+                                                    </choice>
+                                                </otherwise>
+                                            </choice>
+                                        </when>
+                                        <otherwise>
+                                            <flow-ref name="insertChargeProcess1" doc:name="InsertChargeProcess1" />
+                                        </otherwise>
+                                    </choice>
+                                </otherwise>
+                            </choice>
+                        </otherwise>
+                    </choice>
+                </foreach>
+                <logger message="#['Done Total Recs: '++ vars.inputRecordCount ++ ' Valid Recs: '++ vars.validRecordCount ++ ' CHG Insert: '++ vars.chgInsertCount ++ ' CHG Updates: '++ vars.chgUpdateCount ++ ' OFF Inserts: '++ vars.offInsertCount ++ ' OFF Updates: '++ vars.offUpdateCount ++ ' Error Count: '++ vars.errorCount]" level="INFO" doc:name="Process Completed" />
+            </when>
+            <otherwise>
+                <logger message="Done" level="INFO" doc:name="No file to process" />
+                <flow-ref name="temp_Flow" doc:name="Load OFF" />
+            </otherwise>
+        </choice>
+
+        <file:write doc:name="Write file to archive folder" doc:id="beb7ccf4-12b1-448b-a5df-750028d6bb1f" path="#[p('sftp.archive.dir') ++ '/' ++ vars.fileName]" config-ref="IncomingFile">
+			<file:content ><![CDATA[#[vars.originalPayload]]]></file:content>
+		</file:write>
+		<compatibility:outbound-properties-to-var>
+            
+        </compatibility:outbound-properties-to-var>
+		<error-handler ref="Global_Exception_strategy" doc:name="Reference Exception Strategy" />
+
+    </flow>
+
+    <sub-flow name="insertChargeProcess1">
+        <logger message="Testing" level="INFO" doc:name="Logger" />
+        <choice doc:name="Choice">
+            <when expression="#[vars.chargeInactDate == 'NULL']">
+                <db:insert config-ref="DB2_Config_OTS" doc:name="CHG Insert1" target="chgInsertQuery1" targetValue="#[payload.affectedRows]">
+            <db:sql><![CDATA[INSERT INTO S1AOWN.S1VCHG0 (CHRG_STATUTE, CHRG_M_F_I_FLAG, CHRG_CD, CHRG_DESC, CHRG_EFF_DATE, CHRG_INACT_DATE, CHRG_SUM_CAT_CD, CJIS_CD, CHRG_SECTION, CHRG_SECTION_ATT, LAST_UPDATE_ID, LAST_UPDATE_STAMP, ARREST_CHARGE_FLAG, DOJ_FLAG)    VALUES (:chargeStatute, :chargeFlag, :chargeCode, :chargeDesc, :chargeEffDate,  NULL, :chargeSumCatCode, :cjisCode, :chargeSection, :chargeSectionATT, :lastUpdateID, CURRENT_TIMESTAMP, :arrestChargeFlag, :dojFlag) ;]]></db:sql>
+					<db:input-parameters ><![CDATA[#[{
+	"chargeDesc": vars.chargeDesc,
+    "chargeEffDate": vars.chargeEffDate,
+    "chargeSumCatCode": vars.chargeSumCatCode,
+    "lastUpdateID": vars.lastUpdateID,
+    "arrestChargeFlag": vars.arrestChargeFlag,
+    "dojFlag": vars.dojFlag,
+    "chargeSection": vars.chargeSection,
+    "chargeSectionATT": vars.chargeSectionATT,
+    "chargeCode": vars.chargeCode,
+    "chargeStatute": vars.chargeStatute,
+    "chargeFlag": vars.chargeFlag,
+    "cjisCode": vars.cjisCode
+}]]]></db:input-parameters>
+        </db:insert>
+                <choice doc:name="Choice">
+                    <when expression="#[vars.chgInsertQuery1 &gt; 0]">
+						<ee:transform doc:name="Transform Message" doc:id="6ebb8071-a20e-485b-b3cc-27a7ed34bfb7" >
+							<ee:message >
+							</ee:message>
+							<ee:variables >
+								<ee:set-variable variableName="chgInsertFlag" ><![CDATA['Y']]></ee:set-variable>
+								<ee:set-variable variableName="chgInsertCount" ><![CDATA[vars.chgInsertCount as Number default 0 + 1]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+                    </when>
+                    <otherwise>
+                        <logger message="Testing" level="INFO" doc:name="Logger" />
+                    </otherwise>
+                </choice>
+            </when>
+            <otherwise>
+				<db:insert config-ref="DB2_Config_OTS" doc:name="CHG Insert2" target="chgInsertQuery2" targetValue="#[payload.affectedRows]">
+            <db:sql><![CDATA[INSERT INTO S1AOWN.S1VCHG0 (CHRG_STATUTE, CHRG_M_F_I_FLAG, CHRG_CD, CHRG_DESC, CHRG_EFF_DATE, CHRG_INACT_DATE, CHRG_SUM_CAT_CD, CJIS_CD, CHRG_SECTION, CHRG_SECTION_ATT, LAST_UPDATE_ID, LAST_UPDATE_STAMP, ARREST_CHARGE_FLAG, DOJ_FLAG )   VALUES (:chargeStatute, :chargeFlag, :chargeCode, :chargeDesc, :chargeEffDate,  :chargeInactDate, :chargeSumCatCode,  :cjisCode, :chargeSection, :chargeSectionATT, :lastUpdateID, CURRENT_TIMESTAMP, :arrestChargeFlag, :dojFlag) ;]]></db:sql>
+					<db:input-parameters ><![CDATA[#[{
+	"chargeDesc": vars.chargeDesc,
+    "chargeEffDate": vars.chargeEffDate,
+    "chargeInactDate": vars.chargeInactDate,
+    "chargeSumCatCode": vars.chargeSumCatCode,
+    "lastUpdateID": vars.lastUpdateID,
+    "arrestChargeFlag": vars.arrestChargeFlag,
+    "dojFlag": vars.dojFlag,
+    "chargeSection": vars.chargeSection,
+    "chargeSectionATT": vars.chargeSectionATT,
+    "chargeCode": vars.chargeCode,
+    "chargeStatute": vars.chargeStatute,
+    "chargeFlag": vars.chargeFlag,
+    "cjisCode": vars.cjisCode
+}]]]></db:input-parameters>
+        </db:insert>
+				<ee:transform doc:name="Transform Message" doc:id="25429577-99c0-43f5-8a96-665a59fd79d7" >
+					<ee:message >
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="chgInsertFlag" ><![CDATA[if (vars.chgInsertQuery2 > 0)
+	'Y'
+else
+	'N']]></ee:set-variable>
+						<ee:set-variable variableName="chgInsertCount" ><![CDATA[%dw 2.0
+output application/java
+---
+if (vars.chgInsertQuery2 > 0)
+	vars.chgInsertCount as Number default 0 + 1
+else
+	vars.chgInsertCount default 0]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+            </otherwise>
+        </choice>
+        <choice doc:name="Choice">
+            <when expression="#[vars.chgInsertFlag == 'Y']">
+                <ee:transform doc:name="Transform Message" doc:id="15358854-6f0c-401c-b8bc-8e7ce31c2438">
+					<ee:message>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="offenseID" ><![CDATA[0]]></ee:set-variable>
+						<ee:set-variable variableName="chargeInsertCount" ><![CDATA[vars.chargeInsertCount as Number default 0 + 1]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<flow-ref name="getChargeID" doc:name="GetChargeID" />
+				<ee:transform doc:name="Transform Message" doc:id="f2cd6924-60e9-4982-91d3-f3c3c7d7ce09">
+					
+					<ee:variables >
+						<ee:set-variable variableName="offInsertFlag" ><![CDATA['N']]></ee:set-variable> 
+						<ee:set-variable variableName="dojFlag" ><![CDATA['Y']]></ee:set-variable> 
+						<ee:set-variable variableName="arrestChargeFlag" ><![CDATA['Y']]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<db:select config-ref="DB2_Config_OTS" doc:name="Check for Offense ID in OFF" target="getOffenseIDQuery1">
+            <db:sql><![CDATA[SELECT COUNT(*) FROM S1AOWN.S1VOFF0  WHERE OFFENSE_ID = :offenseID;]]></db:sql>
+					<db:input-parameters ><![CDATA[#[{
+	"offenseID": vars.offenseID
+}]]]></db:input-parameters>
+        </db:select>
+                <choice doc:name="Choice">
+                    <when expression='#[vars.offenseID &gt; 0 and vars.getOffenseIDQuery1[0]."1" == 0]'>
+                        
+                        <flow-ref name="insertOffProcess1" doc:name="insertOffProcess1" />
+                        <choice doc:name="Choice">
+                            <when expression="#[vars.chgInsertFlag == 'Y' and vars.offInsertFlag == 'Y']">
+                                <logger message="Charge Record Added to both CHG and OFF" level="INFO" doc:name="Logger" />
+                            </when>
+                            <otherwise>
+                                <logger message="Error in Adding Charge record " level="INFO" doc:name="Logger" />
+                            </otherwise>
+                        </choice>
+                    </when>
+                    <otherwise>
+                        <ee:transform doc:name="Transform Message" doc:id="61e2f582-8c52-4877-80a8-bb4d04bad36c">
+							<ee:message>
+							</ee:message>
+							<ee:variables >
+								<ee:set-variable variableName="dojFlag" ><![CDATA['Y']]></ee:set-variable>
+								<ee:set-variable variableName="arrestChargeFlag" ><![CDATA['Y']]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+						<flow-ref name="insertOffProcess1" doc:name="insertOffProcess1" />
+                    </otherwise>
+                </choice>
+            </when>
+            <otherwise>
+                <logger message="CHG Insert - Not Successful" level="INFO" doc:name="Logger" />
+            </otherwise>
+        </choice>
+    </sub-flow>
+
+    <sub-flow name="insertChargeProcess2">
+        <logger message="Going for Insert2" level="INFO" doc:name="Logger" />
+        <ee:transform doc:name="Transform Message" doc:id="172f9218-dbb6-4a49-9437-d9faffa4dbbb" >
+			
+			<ee:variables >
+				<ee:set-variable variableName="chargeCode" ><![CDATA[vars.chargeCode ++ vars.cjisCode]]></ee:set-variable> 
+				<ee:set-variable variableName="dojFlag" ><![CDATA['N']]></ee:set-variable> 
+				<ee:set-variable variableName="arrestChargeFlag" ><![CDATA['N']]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<db:select config-ref="DB2_Config_OTS" doc:name="CHG Select5" target="chgSelectQuery5">
+   
+            <db:sql><![CDATA[SELECT COUNT(*)   FROM S1AOWN.S1VCHG0 WHERE CHRG_STATUTE = :chargeStatute AND CHRG_M_F_I_FLAG = :chargeFlag AND  CHRG_CD = :chargeCode;]]></db:sql>
+			<db:input-parameters ><![CDATA[#[{
+	"chargeCode": vars.chargeCode,
+    "chargeStatute": vars.chargeStatute,
+    "chargeFlag": vars.chargeFlag
+}]]]></db:input-parameters>
+        </db:select>
+        <choice doc:name="Choice">
+            <when expression='#[vars.chgSelectQuery5[0]."1" == 0]'>
+       
+                <flow-ref name="insertChargeProcess1" doc:name="Insert Charge Process1" />
+            </when>
+            <otherwise>
+                <flow-ref name="updateChargeProcess" doc:name="Update Charge Process" />
+            </otherwise>
+        </choice>
+    </sub-flow>
+
+    <sub-flow name="insertChargeProcess3">
+        <logger message="Going for Insert2" level="INFO" doc:name="Logger" />
+        <ee:transform doc:name="Transform Message" doc:id="ef8a3393-a17a-4b6e-850f-926c98a4b3a7" >
+			<ee:variables >
+				<ee:set-variable variableName="chargeCode" ><![CDATA[output application/java --- vars.chargeCode as String ++ vars.cjisCode as String]]></ee:set-variable> 
+				<ee:set-variable variableName="dojFlag" ><![CDATA['N']]></ee:set-variable> 
+				<ee:set-variable variableName="arrestChargeFlag" ><![CDATA['N']]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<db:select config-ref="DB2_Config_OTS" doc:name="CHG Select5" target="chgSelectQuery5">
+       
+            <db:sql><![CDATA[SELECT COUNT(*)   FROM S1AOWN.S1VCHG0 WHERE CHRG_STATUTE = :chargeStatute AND CHRG_M_F_I_FLAG = :chargeFlag AND  CHRG_CD = :chargeCode;]]></db:sql>
+			<db:input-parameters ><![CDATA[#[output application/json ---{
+	"chargeCode": vars.chargeCode,
+    "chargeStatute": vars.chargeStatute,
+    "chargeFlag": vars.chargeFlag
+}]]]></db:input-parameters>
+        </db:select>
+        <choice doc:name="Choice">
+            <when expression='#[vars.chgSelectQuery5[0]."1" == 0]'>
+              
+                <flow-ref name="insertChargeProcess1" doc:name="Insert Charge Process1" />
+            </when>
+            <otherwise>
+                <flow-ref name="updateChargeProcess" doc:name="Update Charge Process" />
+            </otherwise>
+        </choice>
+    </sub-flow>
+
+    <sub-flow name="updateChargeProcess">
+        <logger message="Testing" level="INFO" doc:name="Logger" />
+        <ee:transform doc:name="Transform Message" doc:id="daaee4fe-ac28-497a-be5b-aabcb97029e0" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="chgUpdateQuery1" ><![CDATA[0]]></ee:set-variable>
+				<ee:set-variable variableName="chgUpdateQuery2" ><![CDATA[0]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+        <choice doc:name="Choice">
+            <when expression="#[vars.chargeInactDate == 'NULL']">
+                <db:update config-ref="DB2_Config_OTS" doc:name="CHG Update1" target="chgUpdateQuery1">
+            <db:sql><![CDATA[UPDATE S1AOWN.S1VCHG0 SET CHRG_DESC = :chargeDesc, CHRG_EFF_DATE = :chargeEffDate,  CHRG_INACT_DATE = NULL, CJIS_CD = :icjisCode,  LAST_UPDATE_ID = :lastUpdateID,  LAST_UPDATE_STAMP = CURRENT_TIMESTAMP,  ARREST_CHARGE_FLAG = :arrestChargeFlag,  DOJ_FLAG = :dojFlag  WHERE CHRG_CD = :chargeCode AND  CHRG_STATUTE = :chargeStatute AND  CHRG_M_F_I_FLAG = :chargeFlag AND  CJIS_CD = :cjisCode;]]></db:sql>
+					<db:input-parameters ><![CDATA[#[{
+    "chargeDesc": vars.chargeDesc,
+    "chargeEffDate": vars.chargeEffDate,
+    "icjisCode": vars.icjisCode,
+    "lastUpdateID": vars.lastUpdateID,
+    "arrestChargeFlag": vars.arrestChargeFlag,
+    "dojFlag": vars.dojFlag,
+    "chargeCode": vars.chargeCode,
+    "chargeStatute": vars.chargeStatute,
+    "chargeFlag": vars.chargeFlag,
+    "cjisCode": vars.cjisCode
+}]]]></db:input-parameters>
+        </db:update>
+            </when>
+            <otherwise>
+				<db:update config-ref="DB2_Config_OTS" doc:name="CHG Update2" target="chgUpdateQuery2">
+					<db:sql ><![CDATA[UPDATE S1AOWN.S1VCHG0 SET CHRG_DESC = :chargeDesc, CHRG_EFF_DATE = :chargeEffDate,  CHRG_INACT_DATE = :chargeInactDate, CJIS_CD = :icjisCode,    LAST_UPDATE_ID = :lastUpdateID,  LAST_UPDATE_STAMP = CURRENT_TIMESTAMP,  ARREST_CHARGE_FLAG = :arrestChargeFlag,  DOJ_FLAG = :dojFlag  WHERE CHRG_CD = :chargeCode AND  CHRG_STATUTE = :chargeStatute AND  CHRG_M_F_I_FLAG = :chargeFlag AND  CJIS_CD = :cjisCode;]]></db:sql>
+					<db:input-parameters ><![CDATA[#[{
+    "chargeDesc": vars.chargeDesc,
+    "chargeEffDate": vars.chargeEffDate,
+    "chargeInactDate": vars.chargeInactDate,
+    "icjisCode": vars.icjisCode,
+    "lastUpdateID": vars.lastUpdateID,
+    "arrestChargeFlag": vars.arrestChargeFlag,
+    "dojFlag": vars.dojFlag,
+    "chargeCode": vars.chargeCode,
+    "chargeStatute": vars.chargeStatute,
+    "chargeFlag": vars.chargeFlag,
+    "cjisCode": vars.cjisCode
+}]]]></db:input-parameters>
+        </db:update>
+            </otherwise>
+        </choice>
+        <set-variable value="#[0]" doc:name="OffenseID" doc:id="d5f8fe5a-2aa2-402e-9596-de26913134b3" variableName="offenseID"/>
+		<ee:transform doc:name="Transform Message" doc:id="76cbe1f5-b9d5-43b8-9859-f56d2aca22a5" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="chgUpdateFlag" ><![CDATA[%dw 2.0
+output application/java
+---
+if(vars.chgUpdateQuery1."affectedRows" > 0 or vars.chgUpdateQuery2."affectedRows" > 0)
+	'Y'
+else
+	'N']]></ee:set-variable>
+				<ee:set-variable variableName="chgUpdateCount" ><![CDATA[%dw 2.0
+output application/java
+---
+if(vars.chgUpdateQuery1."affectedRows" > 0 or vars.chgUpdateQuery2."affectedRows" > 0)
+	(vars.chgUpdateCount as Number default 0) + 1
+else
+	(vars.chgUpdateCount as Number default 0)]]></ee:set-variable>
+				<ee:set-variable variableName="cjisCode" ><![CDATA[%dw 2.0
+output application/java
+---
+if(vars.chgUpdateQuery1."affectedRows" > 0 or vars.chgUpdateQuery2."affectedRows" > 0)
+	vars.icjisCode
+else
+	vars.cjisCode]]></ee:set-variable>
+				<ee:set-variable variableName="offUpdateFlag" ><![CDATA['N']]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+        <choice doc:name="Choice">
+            <when expression="#[vars.chgUpdateFlag == 'Y']">
+                <flow-ref name="getChargeID" doc:name="Get ChargeID" />
+                <db:select config-ref="DB2_Config_OTS" doc:name="Check for Offense ID in OFF" target="getOffenseIDQuery2">
+           
+            <db:sql><![CDATA[SELECT COUNT(*) FROM S1AOWN.S1VOFF0 WHERE OFFENSE_ID = :offenseID;]]></db:sql>
+					<db:input-parameters ><![CDATA[#[{
+"offenseID": vars.offenseID	
+}]]]></db:input-parameters>
+        </db:select>
+                <choice doc:name="Choice">
+                    <when expression='#[vars.offenseID &gt; 0 and vars.getOffenseIDQuery2[0]."1" == 1]'>                     
+                        <ee:transform doc:name="Transform Message" doc:id="375076f5-3770-4bd0-a873-8434f8bb0978">
+							<ee:message>
+							</ee:message>
+							<ee:variables >
+								<ee:set-variable variableName="dojFlag" ><![CDATA['Y']]></ee:set-variable>
+								<ee:set-variable variableName="arrestChargeFlag" ><![CDATA['Y']]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+						<flow-ref name="updateOffProcess1" doc:name="Update OFF" />
+						<choice doc:name="Choice">
+                            <when expression="#[vars.offUpdateFlag == 'Y']">
+                                <logger message="Updated both CHG and OFF" level="INFO" doc:name="Logger" />
+                            </when>
+                            <otherwise>
+                                <logger message="Error in Update Process" level="INFO" doc:name="Logger" />
+                            </otherwise>
+                        </choice>
+                    </when>
+                    <otherwise>
+                        <ee:transform doc:name="Transform Message" doc:id="c4b9152a-251e-4bba-8e07-26d2b997df23">
+							<ee:message />
+							<ee:variables>
+								<ee:set-variable variableName="dojFlag"><![CDATA['Y']]></ee:set-variable>
+								<ee:set-variable variableName="arrestChargeFlag"><![CDATA['Y']]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+						<flow-ref name="insertOffProcess1" doc:name="insertOffProcess1" />
+                    </otherwise>
+                </choice>
+            </when>
+            <otherwise>
+                <logger message="Not updated CHG " level="INFO" doc:name="Logger" />
+            </otherwise>
+        </choice>
+    </sub-flow>
+
+    <sub-flow name="updateChargeProcess2">
+        <logger message="Testing" level="INFO" doc:name="Logger" />
+        <choice doc:name="Choice">
+            <when expression="#[vars.chargeInactDate == null]">
+                <db:update config-ref="DB2_Config_OTS" doc:name="CHG Update1" target="chgUpdateQuery1" targetValue="#[payload.affetcedRows]">
+            <db:sql><![CDATA[UPDATE S1AOWN.S1VCHG0 SET CHRG_DESC = :chargeDesc, CHRG_EFF_DATE = :chargeEffDate,  CHRG_INACT_DATE = NULL,   LAST_UPDATE_ID = :lastUpdateID,  LAST_UPDATE_STAMP = CURRENT_TIMESTAMP,  ARREST_CHARGE_FLAG = :arrestChargeFlag,  DOJ_FLAG = :dojFlag  WHERE CHRG_CD = :chargeCode AND  CHRG_STATUTE = :chargeStatute AND  CHRG_M_F_I_FLAG = :chargeFlag AND  CJIS_CD = :cjisCode;]]></db:sql>
+					<db:input-parameters ><![CDATA[#[{
+	"chargeDesc": vars.chargeDesc,
+    "chargeEffDate": vars.chargeEffDate,
+    "lastUpdateID": vars.lastUpdateID,
+    "arrestChargeFlag": vars.arrestChargeFlag,
+    "dojFlag": vars.dojFlag,
+    "chargeCode": vars.chargeCode,
+    "chargeStatute": vars.chargeStatute,
+    "chargeFlag": vars.chargeFlag,
+    "cjisCode": vars.cjisCode
+}]]]></db:input-parameters>
+        </db:update>
+            </when>
+            <otherwise>
+				<db:update config-ref="DB2_Config_OTS" doc:name="CHG Update2" target="chgUpdateQuery2" targetValue="#[payload.affetcedRows]">
+            <db:sql><![CDATA[UPDATE S1AOWN.S1VCHG0 SET CHRG_DESC = :chargeDesc, CHRG_EFF_DATE = :chargeEffDate,  CHRG_INACT_DATE = :chargeInactDate,    LAST_UPDATE_ID = :lastUpdateID,  LAST_UPDATE_STAMP = CURRENT_TIMESTAMP,  ARREST_CHARGE_FLAG = :arrestChargeFlag,  DOJ_FLAG = :dojFlag  WHERE CHRG_CD = :chargeCode AND  CHRG_STATUTE = :chargeStatute AND  CHRG_M_F_I_FLAG = :chargeFlag AND  CJIS_CD = :cjisCode;]]></db:sql>
+					<db:input-parameters ><![CDATA[#[{
+	"chargeDesc": vars.chargeDesc,
+    "chargeInactDate": vars.chargeInactDate,
+    "chargeEffDate": vars.chargeEffDate,
+    "lastUpdateID": vars.lastUpdateID,
+    "arrestChargeFlag": vars.arrestChargeFlag,
+    "dojFlag": vars.dojFlag,
+    "chargeCode": vars.chargeCode,
+    "chargeStatute": vars.chargeStatute,
+    "chargeFlag": vars.chargeFlag,
+    "cjisCode": vars.cjisCode
+}]]]></db:input-parameters>
+        </db:update>
+            </otherwise>
+        </choice>
+        <ee:transform doc:name="Transform Message" doc:id="e10c0de4-6770-4a5d-93b6-fa6dba7b7887" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="offenseID" ><![CDATA[0]]></ee:set-variable>
+				<ee:set-variable variableName="chgUpdateFlag" ><![CDATA[%dw 2.0
+output application/java
+---
+if(vars.chgUpdateQuery1 > 0 or vars.chgUpdateQuery2 > 0)
+	'Y'
+else
+	'N']]></ee:set-variable>
+				<ee:set-variable variableName="chgUpdateCount" ><![CDATA[%dw 2.0
+output application/java
+---
+if(vars.chgUpdateQuery1 > 0 or vars.chgUpdateQuery2 > 0)
+	vars.chgUpdateCount as Number default 0 + 1
+else
+	vars.chgUpdateCount as Number default 0]]></ee:set-variable>
+				<ee:set-variable variableName="offUpdateFlag" ><![CDATA['N']]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<choice doc:name="Choice">
+            <when expression='#[vars.chgSelectQuery4[0]."1" &gt; 1]'>
+              
+                <ee:transform doc:name="Transform Message" doc:id="c931fb6d-eb1f-4897-bd0b-c9ee7d3003e8">
+					<ee:message>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="chgInsertFlag" ><![CDATA['N']]></ee:set-variable>
+						<ee:set-variable variableName="chargeCode" ><![CDATA[vars.chargeCode as String ++ vars.cjisCode as String]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<flow-ref name="insertCHG" doc:name="Insert CHG" />
+                <choice doc:name="Choicex">
+                    <when expression="#[vars.chgInsertFlag=='Y']">
+                       
+                        <flow-ref name="getChargeID" doc:name="Get ChargeID" />
+                        <choice doc:name="Choice">
+                            <when expression="#[vars.offenseID &gt; '']">
+								<ee:transform doc:name="Transform Message" doc:id="d21e26ec-394f-4617-b0d6-20847fd73745" >
+									<ee:message >
+									</ee:message>
+									<ee:variables >
+										<ee:set-variable variableName="test2" ><![CDATA['']]></ee:set-variable>
+									</ee:variables>
+								</ee:transform>
+                            </when>
+                            <otherwise>
+                                <logger level="INFO" doc:name="Logger" message="Test1" />
+                            </otherwise>
+                        </choice>
+                    </when>
+                    <otherwise>
+                        <logger level="INFO" doc:name="Error in CHG Insert" message="Error in CHG" />
+                    </otherwise>
+                </choice>
+            </when>
+            <when expression='#[vars.chgSelectQuery4[0]."1" == 1]'>
+                
+                <ee:transform doc:name="Transform Message" doc:id="e3398dfb-c478-45ae-bb66-ddbd9522a3b9">
+					<ee:message>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="temp1" ><![CDATA['']]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<logger level="INFO" doc:name="Update CHG" message="Updatee CHG" />
+            </when>
+            <otherwise>
+                <ee:transform doc:name="Transform Message" doc:id="5eaa5ec8-736e-4737-bcb9-9e5e927f9c74">
+					<ee:message>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="chgInsertFlag" ><![CDATA['N']]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<flow-ref name="insertCHG" doc:name="Insert CHG" />
+                <choice doc:name="Choicex">
+                    <when expression="#[vars.chgInsertFlag=='Y']">
+                        
+                        <flow-ref name="getChargeID" doc:name="Get ChargeID" />
+                        <choice doc:name="Choice">
+                            <when expression="#[vars.offenseID &gt; '']">
+								<ee:transform doc:name="Transform Message" doc:id="a5a46a4a-0f88-4b1c-a974-295d647bcab1">
+					<ee:message>
+					</ee:message>
+									<ee:variables >
+										<ee:set-variable variableName="set1" ><![CDATA['']]></ee:set-variable>
+									</ee:variables>
+				</ee:transform>
+                            </when>
+                            <otherwise>
+                                <logger level="INFO" doc:name="Logger" message="Done" />
+                            </otherwise>
+                        </choice>
+                    </when>
+                    <otherwise>
+                        <logger level="INFO" doc:name="Error in CHG Insert" message="Error in" />
+                    </otherwise>
+                </choice>
+            </otherwise>
+        </choice>
+    </sub-flow>
+
+    <sub-flow name="updateChargeProcess3">
+        <logger message="Testing" level="INFO" doc:name="Logger" />
+        <choice doc:name="Choice">
+            <when expression="#[vars.chargeInactDate == 'NULL']">
+				<db:update config-ref="DB2_Config_OTS" doc:name="CHG Update1" target="chgUpdateQuery1">
+            <db:sql><![CDATA[UPDATE S1AOWN.S1VCHG0 SET CHRG_DESC = :chargeDesc, CHRG_EFF_DATE = :chargeEffDate,  CHRG_INACT_DATE = NULL,   CJIS_CD = :cjisCode, LAST_UPDATE_ID = :lastUpdateID,  LAST_UPDATE_STAMP = CURRENT_TIMESTAMP,  ARREST_CHARGE_FLAG = :arrestChargeFlag,  DOJ_FLAG = :dojFlag WHERE CHRG_CD = :chargeCode AND  CHRG_STATUTE = :chargeStatute AND  CHRG_M_F_I_FLAG = :chargeFlag;]]></db:sql>
+					<db:input-parameters ><![CDATA[#[{
+	"chargeDesc": vars.chargeDesc,    
+    "chargeEffDate": vars.chargeEffDate,
+    "lastUpdateID": vars.lastUpdateID,
+    "arrestChargeFlag": vars.arrestChargeFlag,
+    "dojFlag": vars.dojFlag,
+    "chargeCode": vars.chargeCode,
+    "chargeStatute": vars.chargeStatute,
+    "chargeFlag": vars.chargeFlag,
+    "cjisCode": vars.cjisCode
+}]]]></db:input-parameters>
+        </db:update>
+            </when>
+            <otherwise>
+				<db:update config-ref="DB2_Config_OTS" doc:name="CHG Update2" target="chgUpdateQuery2">
+            <db:sql><![CDATA[UPDATE S1AOWN.S1VCHG0 SET CHRG_DESC = :chargeDesc, CHRG_EFF_DATE = :chargeEffDate,  CHRG_INACT_DATE = :chargeInactDate,   CJIS_CD = :cjisCode, LAST_UPDATE_ID = :lastUpdateID,  LAST_UPDATE_STAMP = CURRENT_TIMESTAMP,  ARREST_CHARGE_FLAG = :arrestChargeFlag,  DOJ_FLAG = :dojFlag WHERE CHRG_CD = :chargeCode AND  CHRG_STATUTE = :chargeStatute AND  CHRG_M_F_I_FLAG = :chargeFlag;]]></db:sql>
+					<db:input-parameters ><![CDATA[#[{
+	"chargeDesc": vars.chargeDesc,    
+    "chargeEffDate": vars.chargeEffDate,
+    "chargeInactDate": vars.chargeInactDate,
+    "lastUpdateID": vars.lastUpdateID,
+    "arrestChargeFlag": vars.arrestChargeFlag,
+    "dojFlag": vars.dojFlag,
+    "chargeCode": vars.chargeCode,
+    "chargeStatute": vars.chargeStatute,
+    "chargeFlag": vars.chargeFlag,
+    "cjisCode": vars.cjisCode
+}]]]></db:input-parameters>
+        </db:update>
+            </otherwise>
+        </choice>
+        <ee:transform doc:name="Transform Message" doc:id="7e4c27d6-a16f-4292-a24f-5c2263ffafdb" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="offenseID" ><![CDATA[0]]></ee:set-variable>
+				<ee:set-variable variableName="chgUpdateFlag" ><![CDATA[%dw 2.0
+output application/java
+---
+if(vars.chgUpdateQuery1 > 0 or vars.chgUpdateQuery2 > 0)
+	'Y'
+else
+	'N']]></ee:set-variable>
+				<ee:set-variable variableName="chgUpdateCount" ><![CDATA[%dw 2.0
+output application/java
+---
+if(vars.chgUpdateQuery1 > 0 or vars.chgUpdateQuery2 > 0)
+	vars.chgUpdateCount as Number default 0 + 1
+else
+	vars.chgUpdateCount as Number default 0]]></ee:set-variable>
+				<ee:set-variable variableName="offUpdateFlag" ><![CDATA['N']]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<choice doc:name="Choice">
+            <when expression="#[vars.chgUpdateFlag == 'Y']">
+                <flow-ref name="getChargeID" doc:name="Get ChargeID" />
+                <db:select config-ref="DB2_Config_OTS" doc:name="Check for Offense ID in OFF" target="getOffenseIDQuery2">
+            
+            <db:sql><![CDATA[SELECT COUNT(*) FROM S1AOWN.S1VOFF0  	WHERE OFFENSE_ID = :offenseID;]]></db:sql>
+					<db:input-parameters ><![CDATA[#[{
+	"offenseID": vars.offenseID
+}]]]></db:input-parameters>
+        </db:select>
+                <choice doc:name="Choice">
+                    <when expression='#[vars.offenseID &gt; 0 and vars.getOffenseIDQuery2[0]."1" == 1]'>
+                        
+                        <ee:transform doc:name="Transform Message" doc:id="5bc5e696-2dc8-4290-832a-365079f0e612">
+							<ee:message>
+							</ee:message>
+							<ee:variables >
+								<ee:set-variable variableName="arrestChargeFlag" ><![CDATA['Y']]></ee:set-variable>
+								<ee:set-variable variableName="dojFlag" ><![CDATA['Y']]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+						<flow-ref name="updateOffProcess2" doc:name="Update OFF2" />
+                        <choice doc:name="Choice">
+                            <when expression="#[vars.offUpdateFlag == 'Y']">
+                                <logger message="Updated both CHG and OFF" level="INFO" doc:name="Logger" />
+                            </when>
+                            <otherwise>
+                                <logger message="Error in Update Process" level="INFO" doc:name="Logger" />
+                            </otherwise>
+                        </choice>
+                    </when>
+                    <otherwise>
+                        <ee:transform doc:name="Transform Message" doc:id="a3b97693-9dc1-4e61-8f12-e84f69a05dcc">
+							<ee:message />
+							<ee:variables>
+								<ee:set-variable variableName="arrestChargeFlag"><![CDATA['Y']]></ee:set-variable>
+								<ee:set-variable variableName="dojFlag"><![CDATA['Y']]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+						<flow-ref name="insertOffProcess1" doc:name="insertOffProcess1" />
+                    </otherwise>
+                </choice>
+            </when>
+            <otherwise>
+                <logger message="Not updated CHG " level="INFO" doc:name="Logger" />
+            </otherwise>
+        </choice>
+    </sub-flow>
+
+    <sub-flow name="insertCHG">
+        <logger message="Going for CHG Insert" level="INFO" doc:name="Logger" />
+        <db:insert config-ref="DB2_Config_OTS" doc:name="CHG Insert" target="chgInsertQuery" targetValue="#[payload.affectedRows]">
+            <db:sql><![CDATA[INSERT INTO S1AOWN.S1VCHG0 (CHRG_STATUTE, CHRG_M_F_I_FLAG, CHRG_CD, CHRG_DESC, CHRG_EFF_DATE, CHRG_INACT_DATE, CJIS_CD, CHRG_SECTION, CHRG_SECTION_ATT, LAST_UPDATE_ID, LAST_UPDATE_STAMP, ARREST_CHARGE_FLAG, DOJ_FLAG)    VALUES (:chargeStatute, :chargeFlag, :chargeCode, :chargeDesc, :chargeEffDate,  :chargeInactDate, :cjisCode, :chargeSection, :chargeSectionATT, :lastUpdateID, CURRENT_TIMESTAMP, :arrestChargeFlag, :dojFlag) ;]]></db:sql>
+			<db:input-parameters ><![CDATA[#[{
+    "chargeDesc": vars.chargeDesc,
+    "chargeEffDate": vars.chargeEffDate,
+    "chargeInactDate": vars.chargeInactDate,
+    "lastUpdateID": vars.lastUpdateID,
+    "arrestChargeFlag": vars.arrestChargeFlag,
+    "dojFlag": vars.dojFlag,
+    "chargeSection": vars.chargeSection,
+    "chargeSectionATT": vars.chargeSectionATT,
+    "chargeCode": vars.chargeCode,
+    "chargeStatute": vars.chargeStatute,
+    "chargeFlag": vars.chargeFlag,
+    "cjisCode": vars.cjisCode
+    
+    }]]]></db:input-parameters>
+        </db:insert>
+        <choice doc:name="Choice">
+            <when expression="#[vars.chgInsertQuery &gt; 0]">
+				<ee:transform doc:name="Transform Message" doc:id="c5f5adbd-c5b2-4f25-b6f0-ebafe0c58bcd" >
+					<ee:message >
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="chgInsertFlag" ><![CDATA['Y']]></ee:set-variable>
+						<ee:set-variable variableName="chargeInsertCount" ><![CDATA[vars.chargeInsertCount as Number default 0 + 1]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+            </when>
+            <otherwise>
+                <logger message="CHG Insert - Unsuccessful" level="INFO" doc:name="Logger" />
+            </otherwise>
+        </choice>
+    </sub-flow>
+
+    <sub-flow name="getChargeID">
+        <logger message="Going for Offense ID from CHG" level="INFO" doc:name="Logger" />
+        <db:select config-ref="DB2_Config_OTS" doc:name="Select ChargeID from CHG" target="chgSelectQuery5">
+            
+            <db:sql><![CDATA[SELECT CHARGE_ID FROM S1AOWN.S1VCHG0  WHERE CJIS_CD = :cjisCode AND CHRG_CD = :chargeCode AND CHRG_M_F_I_FLAG = :chargeFlag AND CHRG_STATUTE = :chargeStatute;]]></db:sql>
+			<db:input-parameters ><![CDATA[#[{    
+    "chargeCode": vars.chargeCode,
+    "chargeStatute": vars.chargeStatute,
+    "chargeFlag": vars.chargeFlag,
+    "cjisCode": vars.cjisCode
+}]]]></db:input-parameters>
+        </db:select>
+        <choice doc:name="Choice">
+            <when expression="#[sizeOf(vars.chgSelectQuery5) &gt; 0]">
+				<ee:transform doc:name="Transform Message" doc:id="b0893dc4-c31d-4870-b7ca-77f59374a5ac" >
+					<ee:message >
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="offenseID" ><![CDATA[vars.chgSelectQuery5[0].CHARGE_ID]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+            </when>
+            <otherwise>
+                <ee:transform doc:name="Transform Message" doc:id="9a4240cd-fdc3-48be-9e7a-c685de3fea08">
+					<ee:message>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="offenseID" ><![CDATA[0]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<logger message="Error while getting ChargeID from CHG" level="INFO" doc:name="Error while getting ChargeID from CHG" />
+            </otherwise>
+        </choice>
+    </sub-flow>
+
+    <sub-flow name="insertOffProcess1">
+        <logger message="Testing" level="INFO" doc:name="Logger" />
+        <ee:transform doc:name="Transform Message" doc:id="cca28737-82bf-41b5-8a21-19f2219289b4" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="offInsertQuery1" ><![CDATA[0]]></ee:set-variable>
+				<ee:set-variable variableName="offInsertQuery2" ><![CDATA[0]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+        <choice doc:name="Choice">
+            <when expression="#[vars.chargeInactDate == 'NULL']">
+                <db:insert config-ref="DB2_Config_OTS" doc:name="OFF Insert1" target="offInsertQuery1" targetValue="#[payload.affectedRows]">
+            <db:sql><![CDATA[INSERT INTO S1AOWN.S1VOFF0 (OFFENSE_ID, CHRG_STATUTE, CHRG_MFI_FLAG, CHRG_CD, CHRG_DESC, CJIS_CD, CHRG_EFF_DATE, CHRG_INACT_DATE, CHRG_SUM_CAT_CD,   DOJ_FLAG,   ARREST_CHARGE_FLAG, CHRG_HIERARCHY_CODE, LAST_UPDATE_ID, LAST_UPDATE_STAMP)   VALUES (:offenseID, :chargeStatute, :chargeFlag, :chargeCodeOff, :chargeDesc,  :cjisCode, :chargeEffDate, NULL, :chargeSumCatCode, :dojFlag, :arrestChargeFlag, :chargeHierarchyCode, :lastUpdateID, CURRENT_TIMESTAMP) ;]]></db:sql>
+					<db:input-parameters ><![CDATA[#[{
+    "chargeDesc": vars.chargeDesc,
+    "chargeEffDate": vars.chargeEffDate,
+    "dojFlag": vars.dojFlag,
+    "lastUpdateID": vars.lastUpdateID,
+    "arrestChargeFlag": vars.arrestChargeFlag,
+    "offenseID": vars.offenseID,
+    "chargeCodeOff": vars.chargeCodeOff,
+    "chargeStatute": vars.chargeStatute,
+    "chargeFlag": vars.chargeFlag,
+    "cjisCode": vars.cjisCode,
+    "chargeSumCatCode": vars.chargeSumCatCode,
+    "chargeHierarchyCode": vars.chargeHierarchyCode
+    }]]]></db:input-parameters>
+        </db:insert>
+				<choice doc:name="Choice">
+                    <when expression="#[vars.offInsertQuery1 &gt; 0]">
+						<ee:transform doc:name="Transform Message" doc:id="0804108c-3c82-473b-9154-446c47897841" >
+							<ee:message >
+							</ee:message>
+							<ee:variables >
+								<ee:set-variable variableName="offInsertFlag" ><![CDATA['Y']]></ee:set-variable>
+								<ee:set-variable variableName="offInsertCount" ><![CDATA[vars.offInsertCount as Number default 0 + 1]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+                    </when>
+                    <otherwise>
+                        <logger message="Testing" level="INFO" doc:name="Logger" />
+                    </otherwise>
+                </choice>
+            </when>
+            <otherwise>
+                <db:insert config-ref="DB2_Config_OTS" doc:name="OFF Insert2" target="offInsertQuery2" targetValue="#[payload.affectedRows]">
+            <db:sql><![CDATA[INSERT INTO S1AOWN.S1VOFF0 (OFFENSE_ID, CHRG_STATUTE, CHRG_MFI_FLAG, CHRG_CD, CHRG_DESC, CJIS_CD, CHRG_EFF_DATE, CHRG_INACT_DATE, CHRG_SUM_CAT_CD,   DOJ_FLAG,   ARREST_CHARGE_FLAG, CHRG_HIERARCHY_CODE, LAST_UPDATE_ID, LAST_UPDATE_STAMP )  VALUES (:offenseID, :chargeStatute, :chargeFlag, :chargeCodeOff, :chargeDesc,  :cjisCode, :chargeEffDate, :chargeInactDate, :chargeSumCatCode, :dojFlag, :arrestChargeFlag, :chargeHierarchyCode,  :lastUpdateID, CURRENT_TIMESTAMP );]]></db:sql>
+					<db:input-parameters ><![CDATA[#[{
+    "chargeDesc": vars.chargeDesc,
+    "chargeEffDate": vars.chargeEffDate,
+    "chargeInactDate": vars.chargeInactDate,
+    "dojFlag": vars.dojFlag,
+    "lastUpdateID": vars.lastUpdateID,
+    "arrestChargeFlag": vars.arrestChargeFlag,
+    "offenseID": vars.offenseID,
+    "chargeCodeOff": vars.chargeCodeOff,
+    "chargeStatute": vars.chargeStatute,
+    "chargeFlag": vars.chargeFlag,
+    "cjisCode": vars.cjisCode,
+    "chargeSumCatCode": vars.chargeSumCatCode,
+    "chargeHierarchyCode": vars.chargeHierarchyCode
+    }]]]></db:input-parameters>
+        </db:insert>
+                <ee:transform doc:name="Transform Message" doc:id="31682b15-389a-435e-bf63-f88d9b7d361a">
+					<ee:message>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="chgInsertFlag" ><![CDATA[%dw 2.0
+output application/java
+---
+if (vars.offInsertQuery2 > 0)
+	vars.chgInsertFlag
+else
+	'N']]></ee:set-variable>
+						<ee:set-variable variableName="offInsertFlag" ><![CDATA[%dw 2.0
+output application/java
+---
+if (vars.offInsertQuery2 > 0)
+	'Y'
+else
+	vars.offInsertFlag]]></ee:set-variable>
+						<ee:set-variable variableName="offInsertCount" ><![CDATA[%dw 2.0
+output application/java
+---
+if (vars.offInsertQuery2 > 0)
+	vars.offInsertCount as Number default 0 + 1
+else
+	vars.offInsertCount as Number default 0]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+            </otherwise>
+        </choice>
+    </sub-flow>
+
+    <sub-flow name="updateOffProcess1">
+        <logger message="Testing" level="INFO" doc:name="Logger" />
+        <ee:transform doc:name="Transform Message" doc:id="09ab17d8-543b-41ec-91fe-38315800d947" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="offUpdateQuery1" ><![CDATA[0]]></ee:set-variable>
+				<ee:set-variable variableName="offUpdateQuery2" ><![CDATA[0]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+        <choice doc:name="Choice">
+            <when expression="#[vars.chargeInactDate == 'NULL']">
+                <db:update config-ref="DB2_Config_OTS" doc:name="OFF Update1" target="offUpdateQuery1" targetValue="#[payload.affectedRows]">
+            <db:sql><![CDATA[UPDATE S1AOWN.S1VOFF0 SET  CHRG_DESC = :chargeDesc,  CHRG_EFF_DATE = :chargeEffDate,  CHRG_INACT_DATE = NULL,  CJIS_CD = :cjisCode,  LAST_UPDATE_ID = :lastUpdateID,  LAST_UPDATE_STAMP = CURRENT_TIMESTAMP,  ARREST_CHARGE_FLAG = :arrestChargeFlag,  DOJ_FLAG = 'Y', VALIDATION_CODE = :validationCode, TRANSACTION_TYPE = :transactionType, DEFAULT_CHARGE_TYPE = NULL, CHRG_HIERARCHY_CODE = NULL, ALPS_COGNIZANT = NULL WHERE OFFENSE_ID =  :offenseID AND  CHRG_CD = :chargeCodeOff AND  CHRG_STATUTE = :chargeStatute AND  CHRG_MFI_FLAG = :chargeFlag;
+]]></db:sql>
+					<db:input-parameters ><![CDATA[#[{
+    "chargeDesc": vars.chargeDesc,
+    "chargeEffDate": vars.chargeEffDate,
+    "transactionType": vars.transactionType,
+    "validationCode": vars.validationCode,
+    "lastUpdateID": vars.lastUpdateID,
+    "arrestChargeFlag": vars.arrestChargeFlag,
+    "offenseID": vars.offenseID,
+    "chargeCodeOff": vars.chargeCodeOff,
+    "chargeStatute": vars.chargeStatute,
+    "chargeFlag": vars.chargeFlag,
+    "cjisCode": vars.cjisCode
+}]]]></db:input-parameters>
+        </db:update>
+            </when>
+            <otherwise>
+				<db:update config-ref="DB2_Config_OTS" doc:name="OFF Update2" target="offUpdateQuery2" targetValue="#[payload.affectedRows]">
+            <db:sql><![CDATA[UPDATE S1AOWN.S1VOFF0 SET  CHRG_DESC = :chargeDesc,  CHRG_EFF_DATE = :chargeEffDate,  CHRG_INACT_DATE = :chargeInactDate, CJIS_CD = :cjisCode, LAST_UPDATE_ID = :lastUpdateID,  LAST_UPDATE_STAMP = CURRENT_TIMESTAMP,  ARREST_CHARGE_FLAG = :arrestChargeFlag,  DOJ_FLAG = 'Y', VALIDATION_CODE = :validationCode, TRANSACTION_TYPE = :transactionType, DEFAULT_CHARGE_TYPE = NULL, CHRG_HIERARCHY_CODE = NULL, ALPS_COGNIZANT = NULL WHERE OFFENSE_ID =  :offenseID AND  CHRG_CD = :chargeCodeOff AND  CHRG_STATUTE = :chargeStatute AND  CHRG_MFI_FLAG = :chargeFlag;]]></db:sql>
+					<db:input-parameters ><![CDATA[#[{
+    "chargeDesc": vars.chargeDesc,
+    "chargeEffDate": vars.chargeEffDate,
+    "chargeInactDate": vars.chargeInactDate,
+    "transactionType": vars.transactionType,
+    "validationCode": vars.validationCode,
+    "lastUpdateID": vars.lastUpdateID,
+    "arrestChargeFlag": vars.arrestChargeFlag,
+    "offenseID": vars.offenseID,
+    "chargeCodeOff": vars.chargeCodeOff,
+    "chargeStatute": vars.chargeStatute,
+    "chargeFlag": vars.chargeFlag,
+    "cjisCode": vars.cjisCode
+}]]]></db:input-parameters>
+        </db:update>
+            </otherwise>
+        </choice>
+		<ee:transform doc:name="Transform Message" doc:id="b1e766c4-5920-4fae-93e3-f7cf260f5d54" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="offUpdateFlag" ><![CDATA[%dw 2.0
+output application/java
+---
+if (vars.offUpdateQuery1 > 0 or vars.offUpdateQuery2 > 0)
+	'Y'
+else
+	'N']]></ee:set-variable>
+				<ee:set-variable variableName="offUpdateCount" ><![CDATA[%dw 2.0
+output application/java
+---
+if (vars.offUpdateQuery1 > 0 or vars.offUpdateQuery2 > 0)
+	vars.offUpdateCount as Number default 0 + 1
+else
+	vars.offUpdateCount as Number default 0
+]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+    </sub-flow>
+
+    <sub-flow name="updateOffProcess2">
+        <logger message="Testing" level="INFO" doc:name="Logger" />
+        <ee:transform doc:name="Transform Message" doc:id="6f752c4f-e675-4acc-b665-8a055d5cc814" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="offUpdateQuery1" ><![CDATA[0]]></ee:set-variable>
+				<ee:set-variable variableName="offUpdateQuery2" ><![CDATA[0]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+        <choice doc:name="Choice">
+            <when expression="#[vars.chargeInactDate == 'NULL']">
+                <db:update config-ref="DB2_Config_OTS" doc:name="OFF Update2" target="offUpdateQuery1">
+            <db:sql><![CDATA[UPDATE S1AOWN.S1VOFF0 SET  CHRG_DESC = :chargeDesc,  CHRG_EFF_DATE = :chargeEffDate,  CHRG_INACT_DATE = NULL,   CJIS_CD = :cjisCode, LAST_UPDATE_ID = :lastUpdateID,  LAST_UPDATE_STAMP = CURRENT_TIMESTAMP,  ARREST_CHARGE_FLAG = :arrestChargeFlag,  DOJ_FLAG = 'Y', VALIDATION_CODE = :validationCode, TRANSACTION_TYPE = :transactionType, DEFAULT_CHARGE_TYPE = NULL, CHRG_HIERARCHY_CODE = NULL, ALPS_COGNIZANT = NULL WHERE OFFENSE_ID =  :offenseID AND  CHRG_CD = :chargeCodeOff AND  CHRG_STATUTE = :chargeStatute AND  CHRG_MFI_FLAG = :chargeFlag;]]></db:sql>
+					<db:input-parameters ><![CDATA[#[{
+    "chargeDesc": vars.chargeDesc,
+    "chargeEffDate": vars.chargeEffDate,
+    "lastUpdateID": vars.lastUpdateID,
+    "arrestChargeFlag": vars.arrestChargeFlag,
+    "offenseID": vars.offenseID,
+    "chargeCodeOff": vars.chargeCodeOff,
+    "chargeStatute": vars.chargeStatute,
+    "chargeFlag": vars.chargeFlag,
+    "cjisCode": vars.cjisCode,
+    "transactionType": vars.transactionType,
+    "validationCode": vars.validationCode
+}]]]></db:input-parameters>
+        </db:update>
+            </when>
+            <otherwise>
+                <db:update config-ref="DB2_Config_OTS" doc:name="OFF Update2" target="offUpdateQuery2">
+            <db:sql><![CDATA[UPDATE S1AOWN.S1VOFF0 SET  CHRG_DESC = :chargeDesc,  CHRG_EFF_DATE = :chargeEffDate,  CHRG_INACT_DATE = :chargeInactDate, CJIS_CD = :cjisCode,  LAST_UPDATE_ID = :lastUpdateID,  LAST_UPDATE_STAMP = CURRENT_TIMESTAMP,  ARREST_CHARGE_FLAG = :arrestChargeFlag,  DOJ_FLAG = 'Y', VALIDATION_CODE = :validationCode, TRANSACTION_TYPE = :transactionType, DEFAULT_CHARGE_TYPE = NULL, CHRG_HIERARCHY_CODE = NULL, ALPS_COGNIZANT = NULL WHERE OFFENSE_ID =  :offenseID AND  CHRG_CD = :chargeCodeOff AND  CHRG_STATUTE = :chargeStatute AND  CHRG_MFI_FLAG = :chargeFlag;]]></db:sql>
+					<db:input-parameters ><![CDATA[#[{
+    "chargeDesc": vars.chargeDesc,
+    "chargeEffDate": vars.chargeEffDate,
+    "chargeInactDate": vars.chargeInactDate,
+    "lastUpdateID": vars.lastUpdateID,
+    "arrestChargeFlag": vars.arrestChargeFlag,
+    "offenseID": vars.offenseID,
+    "chargeCodeOff": vars.chargeCodeOff,
+    "chargeStatute": vars.chargeStatute,
+    "chargeFlag": vars.chargeFlag,
+    "cjisCode": vars.cjisCode,
+    "transactionType": vars.transactionType,
+    "validationCode": vars.validationCode
+}]]]></db:input-parameters>
+        </db:update>
+            </otherwise>
+        </choice>
+		<ee:transform doc:name="Transform Message" doc:id="7479157a-8903-4207-addf-3e0c47876584" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="offUpdateFlag" ><![CDATA[%dw 2.0
+output application/java
+---
+if (vars.offUpdateQuery1 > 0 or vars.offUpdateQuery2 > 0)
+	'Y'
+else
+	'N']]></ee:set-variable>
+				<ee:set-variable variableName="offUpdateCount" ><![CDATA[%dw 2.0
+output application/java
+---
+if (vars.offUpdateQuery1 > 0 or vars.offUpdateQuery2 > 0)
+	vars.offUpdateCount as Number default 0 + 1
+else
+	vars.offUpdateCount as Number default 0]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+    </sub-flow>
+
+    <sub-flow name="temp_Flow">
+        <logger message="Starting Temp Flow" level="INFO" doc:name="Logger" />
+        <ee:transform doc:name="Transform Message" doc:id="457aa308-e329-473f-a018-1f2010bce2e5" >
+			
+			<ee:variables >
+				<ee:set-variable variableName="tChargeID" ><![CDATA[0]]></ee:set-variable> 
+				<ee:set-variable variableName="tChargeCode" ><![CDATA[' ']]></ee:set-variable> 
+				<ee:set-variable variableName="tChargeStatute" ><![CDATA[' ']]></ee:set-variable> 
+				<ee:set-variable variableName="tChargeFlag" ><![CDATA[' ']]></ee:set-variable> 
+				<ee:set-variable variableName="tChargeSumCatCode" ><![CDATA[' ']]></ee:set-variable> 
+				<ee:set-variable variableName="tChargeEffDate" ><![CDATA[' ']]></ee:set-variable> 
+				<ee:set-variable variableName="tChargeInactDate" ><![CDATA[' ']]></ee:set-variable> 
+				<ee:set-variable variableName="tCJISCode" ><![CDATA[' ']]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+        <db:select config-ref="DB2_Config_OTS" doc:name="Select OFF Count" target="offSelectQueryCount">
+            
+            <db:sql><![CDATA[Select count(*) from s1aown.s1voff0;]]></db:sql>
+        </db:select>
+        <choice doc:name="Choice">
+            <when expression='#[vars.offSelectQueryCount[0]."1" == 0]'>
+                
+                <db:select config-ref="DB2_Config_OTS" doc:name="Select Charges from CHG" target="chgSelectQuery0">
+           
+            <db:sql><![CDATA[SELECT CHRG_STATUTE,		
+CHRG_M_F_I_FLAG,
+CHRG_CD,
+CHRG_SUM_CAT_CD,
+CHRG_DESC,
+CHRG_EFF_DATE,
+CHRG_INACT_DATE,
+CJIS_CD,
+DOJ_FLAG,
+ARREST_CHARGE_FLAG,
+CHARGE_ID
+FROM S1AOWN.S1VCHG0 
+WHERE CHRG_STATUTE = 'MC' OR DOJ_FLAG = 'Y' ORDER BY  CHARGE_ID;]]></db:sql>
+        </db:select>
+                <set-payload value="#[vars.chgSelectQuery0]" doc:name="Set Payload" />
+                <logger message="#[payload]" level="INFO" doc:name="Logger" />
+                <foreach doc:name="For Each" collection="#[payload]">
+                    <logger message="#[payload]" level="INFO" doc:name="Logger" />
+                    <logger message="#[payload.CHRG_CD]" level="INFO" doc:name="Logger" />
+                    <ee:transform doc:name="Transform Message" doc:id="f47f7cba-9396-4066-beef-4a0a7a1072ed" >
+						<ee:variables >
+								<ee:set-variable variableName="tChargeStatute" ><![CDATA[payload.CHRG_STATUTE]]></ee:set-variable> 
+								<ee:set-variable variableName="tChargeCode" ><![CDATA[payload.CHRG_CD]]></ee:set-variable> 
+								<ee:set-variable variableName="tChargeFlag" ><![CDATA[payload.CHRG_M_F_I_FLAG]]></ee:set-variable> 
+								<ee:set-variable variableName="tChargeSumCatCode" ><![CDATA[payload.CHRG_SUM_CAT_CD]]></ee:set-variable> 
+								<ee:set-variable variableName="tChargeDesc" ><![CDATA[payload.CHRG_DESC]]></ee:set-variable> 
+								<ee:set-variable variableName="tChargeActFlag" ><![CDATA[payload.CHRG_ACT_FLAG]]></ee:set-variable> 
+								<ee:set-variable variableName="tChargeEffDate" ><![CDATA[payload.CHRG_EFF_DATE]]></ee:set-variable> 
+								<ee:set-variable variableName="tChargeInactDate" ><![CDATA[payload.CHRG_INACT_DATE]]></ee:set-variable> 
+								<ee:set-variable variableName="tCJISCode" ><![CDATA[payload.CJIS_CD]]></ee:set-variable> 
+								<ee:set-variable variableName="tDOJFlag" ><![CDATA[payload.DOJ_FLAG]]></ee:set-variable> 
+								<ee:set-variable variableName="tArrestChargeFlag" ><![CDATA[payload.ARREST_CHARGE_FLAG]]></ee:set-variable> 
+								<ee:set-variable variableName="tChargeID" ><![CDATA[payload.CHARGE_ID]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+					<db:insert config-ref="DB2_Config_OTS" doc:name="OFF Insert" target="offInsertQuery0">
+            <db:sql><![CDATA[INSERT INTO S1AOWN.S1VOFF0  (OFFENSE_ID, CHRG_STATUTE, CHRG_MFI_FLAG, CHRG_CD, CHRG_DESC, CJIS_CD, CHRG_EFF_DATE, CHRG_INACT_DATE, CHRG_SUM_CAT_CD,  DOJ_FLAG,  ARREST_CHARGE_FLAG, LAST_UPDATE_ID, LAST_UPDATE_STAMP) VALUES(:tChargeID, :tChargeStatute, :tChargeFlag, :tChargeCode, :tChargeDesc, :tCJISCode, :tChargeEffDate, NULL, :tChargeSumCatCode, :tDOJFlag, :tArrestChargeFlag, 'CRIMS', CURRENT_TIMESTAMP);]]></db:sql>
+						<db:input-parameters ><![CDATA[#[{
+    "tChargeID": vars.tChargeID,
+    "tChargeStatute": vars.tChargeStatute,
+    "tChargeFlag": vars.tChargeFlag,
+    "tChargeCode": vars.tChargeCode,
+    "tChargeDesc": vars.tChargeDesc,
+    "tCJISCode": vars.tCJISCode,
+    "tChargeEffDate": vars.tChargeEffDate,
+    "tChargeSumCatCode": vars.tChargeSumCatCode,
+    "tDOJFlag": vars.tDOJFlag,
+    "tArrestChargeFlag": vars.tArrestChargeFlag
+}]]]></db:input-parameters>
+        </db:insert>
+                </foreach>
+            </when>
+            <otherwise>
+                <logger message="No need to Load OFF" level="INFO" doc:name="Logger" />
+            </otherwise>
+        </choice>
+    </sub-flow>
+
+    <sub-flow name="auditTXN">
+        <logger message="#['\n*** auditFlow txnID: ' ++ vars.txnkID]" level="INFO" doc:name="Logger" />
+        <db:insert config-ref="DB2_Config_OTS" doc:name="Create TXN Entry">
+            <db:sql><![CDATA[insert into GAAOWN.GAVTXN1 ( 	TXN_ID, 	USERID, 	TXN_TYPE_CD, 	LAST_UPDATE_STAMP, 	SYSTEM_ID ) values ( 	:txnkID, 	:auditUserID, 	:auditTypeCode, 	:dtTime, 	:auditSystemID );]]></db:sql>
+			<db:input-parameters ><![CDATA[#[{
+    "txnkID": vars.txnkID,
+    "auditUserID": p("audit.userID"),
+    "auditTypeCode": vars.auditTypeCode,
+    "dtTime": now() as DateTime {"format": "yyyy-MM-dd HH:mm:ss.SSS"},
+    "auditSystemID": p("audit.systemID")
+}]]]></db:input-parameters>
+        </db:insert>
+    </sub-flow>
+
+    <sub-flow name="auditTXK">
+        <logger message="#['\n*** Create TXK entry. TXN ID: ' ++ vars.txnkID ++ ', TXK Type: ' ++ vars.txkType ++ ', TXK Value: ' ++ vars.newPFN]" level="INFO" doc:name="Logger" />
+        <db:insert config-ref="DB2_Config_OTS" doc:name="Create TXK Entry">
+            <db:sql><![CDATA[insert into GAAOWN.GAVTXK1 ( 	TXN_ID, 	KEY_TYPE, 	KEY_VALUE ) values ( 	:txnkID, 	txkType, 	:newPFN );]]></db:sql>
+			<db:input-parameters ><![CDATA[#[{
+	"txnkID": vars.txnkID,
+    "txkType": vars.txkType,
+    "newPFN": vars.newPFN
+}]]]></db:input-parameters>
+        </db:insert>
+    </sub-flow>
+
+    <sub-flow name="auditTheError">
+        <logger message="#['\n::: Audit the error for ' ++ vars.fileName ++ ', TXN ID: ' ++ vars.txnID]" level="INFO" doc:name="Logger" />
+        <choice doc:name="Check if a transaction was written to TXN">
+            <when expression="#[(vars.dbTxnInsertResult == null) or (vars.dbTxnInsertResult &lt; 1)]">
+                <db:insert config-ref="DB2_Config_OTS" target="dbResult" doc:name="No transaction. Insert the error transaction into TXN.">
+                    
+                    <db:sql><![CDATA[insert into GAAOWN.GAVTXN1 ( 	TXN_ID, 	USERID, 	TXN_TYPE_CD, 	ERROR_NUMBER, 	ERROR_DETAIL, 	LAST_UPDATE_STAMP, 	SYSTEM_ID ) values ( 	:txnkID, 	:auditUserID, 	:auditTypeCode, 	:errorNumber, 	:errorDetails, 	CURRENT_TIMESTAMP, 	:auditSystemID );]]></db:sql>
+					<db:input-parameters ><![CDATA[#[{
+	"txnkID": vars.txnkID,
+    "auditUserID": p("audit.userID"),
+    "auditTypeCode": vars.auditTypeCode,
+    "errorNumber": vars.errorNumber,
+    "errorDetails": vars.errorDetails,
+    "auditSystemID": p("audit.systemID")
+}]]]></db:input-parameters>
+                </db:insert>
+            </when>
+            <otherwise>
+                <db:update config-ref="DB2_Config_OTS" target="dbResult" doc:name="Transaction exists. Update TXN with the error.">
+                    <db:sql><![CDATA[update 	GAAOWN.GAVTXN1 set 	ERROR_NUMBER = :auditErrorNumber, 	ERROR_DETAIL = :errorDetails, 	LAST_UPDATE_STAMP = CURRENT_TIMESTAMP where 	TXN_ID = :txnkID and 	USERID = :auditUserID;]]></db:sql>
+					<db:input-parameters ><![CDATA[#[{
+	"auditErrorNumber": p("audit.error.number"),
+    "txnkID": vars.txnkID,
+    "auditUserID": p("audit.userID"),
+    "errorDetails": vars.errorDetails
+}]]]></db:input-parameters>
+                </db:update>
+            </otherwise>
+        </choice>
+        <ee:transform doc:name="Transform Message" doc:id="c5f2c781-e858-419f-b887-aa7d596b7dff" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="auditFlag" ><![CDATA['N']]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+    </sub-flow>
+
+</mule>

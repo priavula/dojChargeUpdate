@@ -1,0 +1,7 @@
+Exception while processing inboundCLPPerson file 
+
+Payload :  #[error.payload ]
+
+Exception Cause :  #[vars.exceptionCause]
+
+File Name : #[vars.vFilename]

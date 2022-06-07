@@ -1,0 +1,7 @@
+Exception while processing inboundCLPPerson file 
+
+Payload :  #[error.payload ]
+
+
+
+File Name : #[vars.vFilename]
