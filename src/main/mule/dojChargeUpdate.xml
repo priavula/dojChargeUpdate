@@ -545,7 +545,7 @@ else
             <when expression="#[vars.chargeInactDate == 'NULL']">
                 <db:insert config-ref="DB2_Config_OTS" doc:name="CHG Insert1" target="chgInsertQuery1" targetValue="#[payload.affectedRows]">
             <db:sql><![CDATA[INSERT INTO S1AOWN.S1VCHG0 (CHRG_STATUTE, CHRG_M_F_I_FLAG, CHRG_CD, CHRG_DESC, CHRG_EFF_DATE, CHRG_INACT_DATE, CHRG_SUM_CAT_CD, CJIS_CD, CHRG_SECTION, CHRG_SECTION_ATT, LAST_UPDATE_ID, LAST_UPDATE_STAMP, ARREST_CHARGE_FLAG, DOJ_FLAG)    VALUES (:chargeStatute, :chargeFlag, :chargeCode, :chargeDesc, :chargeEffDate,  NULL, :chargeSumCatCode, :cjisCode, :chargeSection, :chargeSectionATT, :lastUpdateID, CURRENT_TIMESTAMP, :arrestChargeFlag, :dojFlag) ;]]></db:sql>
-					<db:input-parameters ><![CDATA[#[{
+					<db:input-parameters ><![CDATA[#[output application/json --- {
 	"chargeDesc": vars.chargeDesc,
     "chargeEffDate": vars.chargeEffDate,
     "chargeSumCatCode": vars.chargeSumCatCode,
@@ -579,7 +579,7 @@ else
             <otherwise>
 				<db:insert config-ref="DB2_Config_OTS" doc:name="CHG Insert2" target="chgInsertQuery2" targetValue="#[payload.affectedRows]">
             <db:sql><![CDATA[INSERT INTO S1AOWN.S1VCHG0 (CHRG_STATUTE, CHRG_M_F_I_FLAG, CHRG_CD, CHRG_DESC, CHRG_EFF_DATE, CHRG_INACT_DATE, CHRG_SUM_CAT_CD, CJIS_CD, CHRG_SECTION, CHRG_SECTION_ATT, LAST_UPDATE_ID, LAST_UPDATE_STAMP, ARREST_CHARGE_FLAG, DOJ_FLAG )   VALUES (:chargeStatute, :chargeFlag, :chargeCode, :chargeDesc, :chargeEffDate,  :chargeInactDate, :chargeSumCatCode,  :cjisCode, :chargeSection, :chargeSectionATT, :lastUpdateID, CURRENT_TIMESTAMP, :arrestChargeFlag, :dojFlag) ;]]></db:sql>
-					<db:input-parameters ><![CDATA[#[{
+					<db:input-parameters ><![CDATA[#[output application/json ---{
 	"chargeDesc": vars.chargeDesc,
     "chargeEffDate": vars.chargeEffDate,
     "chargeInactDate": vars.chargeInactDate,
@@ -740,11 +740,12 @@ else
 				<ee:set-variable variableName="chgUpdateQuery2" ><![CDATA[0]]></ee:set-variable>
 			</ee:variables>
 		</ee:transform>
-        <choice doc:name="Choice">
+		<choice doc:name="Choice">
             <when expression="#[vars.chargeInactDate == 'NULL']">
-                <db:update config-ref="DB2_Config_OTS" doc:name="CHG Update1" target="chgUpdateQuery1">
+                <logger level="INFO" doc:name="Logger" doc:id="b361554c-ac0d-4a70-92f4-55c907c2c30b" message="before update 1"/>
+				<db:update config-ref="DB2_Config_OTS" doc:name="CHG Update1" target="chgUpdateQuery1" targetValue="#[payload.affectedRows]">
             <db:sql><![CDATA[UPDATE S1AOWN.S1VCHG0 SET CHRG_DESC = :chargeDesc, CHRG_EFF_DATE = :chargeEffDate,  CHRG_INACT_DATE = NULL, CJIS_CD = :icjisCode,  LAST_UPDATE_ID = :lastUpdateID,  LAST_UPDATE_STAMP = CURRENT_TIMESTAMP,  ARREST_CHARGE_FLAG = :arrestChargeFlag,  DOJ_FLAG = :dojFlag  WHERE CHRG_CD = :chargeCode AND  CHRG_STATUTE = :chargeStatute AND  CHRG_M_F_I_FLAG = :chargeFlag AND  CJIS_CD = :cjisCode;]]></db:sql>
-					<db:input-parameters ><![CDATA[#[{
+					<db:input-parameters><![CDATA[#[output application/json ---{
     "chargeDesc": vars.chargeDesc,
     "chargeEffDate": vars.chargeEffDate,
     "icjisCode": vars.icjisCode,
@@ -757,11 +758,13 @@ else
     "cjisCode": vars.cjisCode
 }]]]></db:input-parameters>
         </db:update>
+				<logger level="INFO" doc:name="Logger" doc:id="c32c906b-b2e2-44b1-84bc-847f49028145" message="after update 1"/>
             </when>
-            <otherwise>
-				<db:update config-ref="DB2_Config_OTS" doc:name="CHG Update2" target="chgUpdateQuery2">
-					<db:sql ><![CDATA[UPDATE S1AOWN.S1VCHG0 SET CHRG_DESC = :chargeDesc, CHRG_EFF_DATE = :chargeEffDate,  CHRG_INACT_DATE = :chargeInactDate, CJIS_CD = :icjisCode,    LAST_UPDATE_ID = :lastUpdateID,  LAST_UPDATE_STAMP = CURRENT_TIMESTAMP,  ARREST_CHARGE_FLAG = :arrestChargeFlag,  DOJ_FLAG = :dojFlag  WHERE CHRG_CD = :chargeCode AND  CHRG_STATUTE = :chargeStatute AND  CHRG_M_F_I_FLAG = :chargeFlag AND  CJIS_CD = :cjisCode;]]></db:sql>
-					<db:input-parameters ><![CDATA[#[{
+			<otherwise>
+				<logger level="INFO" doc:name="Logger" doc:id="0ad2fb3e-1d6a-41dc-9af3-3616b7f5da27" message="before update 2"/>
+				<db:update config-ref="DB2_Config_OTS" doc:name="CHG Update2" target="chgUpdateQuery2" targetValue="#[payload.affectedRows]">
+					<db:sql><![CDATA[UPDATE S1AOWN.S1VCHG0 SET CHRG_DESC = :chargeDesc, CHRG_EFF_DATE = :chargeEffDate,  CHRG_INACT_DATE = :chargeInactDate, CJIS_CD = :icjisCode,    LAST_UPDATE_ID = :lastUpdateID,  LAST_UPDATE_STAMP = CURRENT_TIMESTAMP,  ARREST_CHARGE_FLAG = :arrestChargeFlag,  DOJ_FLAG = :dojFlag  WHERE CHRG_CD = :chargeCode AND  CHRG_STATUTE = :chargeStatute AND  CHRG_M_F_I_FLAG = :chargeFlag AND  CJIS_CD = :cjisCode;]]></db:sql>
+					<db:input-parameters><![CDATA[#[output application/json ---{
     "chargeDesc": vars.chargeDesc,
     "chargeEffDate": vars.chargeEffDate,
     "chargeInactDate": vars.chargeInactDate,
@@ -775,6 +778,7 @@ else
     "cjisCode": vars.cjisCode
 }]]]></db:input-parameters>
         </db:update>
+				<logger level="INFO" doc:name="Logger" doc:id="ea68a0f0-d9aa-4413-82a7-14c31823059b" message="after update 2"/>
             </otherwise>
         </choice>
         <set-variable value="#[0]" doc:name="OffenseID" doc:id="d5f8fe5a-2aa2-402e-9596-de26913134b3" variableName="offenseID"/>
@@ -785,21 +789,21 @@ else
 				<ee:set-variable variableName="chgUpdateFlag" ><![CDATA[%dw 2.0
 output application/java
 ---
-if(vars.chgUpdateQuery1."affectedRows" > 0 or vars.chgUpdateQuery2."affectedRows" > 0)
+if(vars.chgUpdateQuery1 > 0 or vars.chgUpdateQuery2 > 0)
 	'Y'
 else
 	'N']]></ee:set-variable>
 				<ee:set-variable variableName="chgUpdateCount" ><![CDATA[%dw 2.0
 output application/java
 ---
-if(vars.chgUpdateQuery1."affectedRows" > 0 or vars.chgUpdateQuery2."affectedRows" > 0)
+if(vars.chgUpdateQuery1 > 0 or vars.chgUpdateQuery2 > 0)
 	(vars.chgUpdateCount as Number default 0) + 1
 else
 	(vars.chgUpdateCount as Number default 0)]]></ee:set-variable>
 				<ee:set-variable variableName="cjisCode" ><![CDATA[%dw 2.0
 output application/java
 ---
-if(vars.chgUpdateQuery1."affectedRows" > 0 or vars.chgUpdateQuery2."affectedRows" > 0)
+if(vars.chgUpdateQuery1 > 0 or vars.chgUpdateQuery2 > 0)
 	vars.icjisCode
 else
 	vars.cjisCode]]></ee:set-variable>
@@ -858,9 +862,9 @@ else
         <logger message="Testing" level="INFO" doc:name="Logger" />
         <choice doc:name="Choice">
             <when expression="#[vars.chargeInactDate == null]">
-                <db:update config-ref="DB2_Config_OTS" doc:name="CHG Update1" target="chgUpdateQuery1" targetValue="#[payload.affetcedRows]">
+                <db:update config-ref="DB2_Config_OTS" doc:name="CHG Update1" target="chgUpdateQuery1" targetValue="#[payload.affectedRows]">
             <db:sql><![CDATA[UPDATE S1AOWN.S1VCHG0 SET CHRG_DESC = :chargeDesc, CHRG_EFF_DATE = :chargeEffDate,  CHRG_INACT_DATE = NULL,   LAST_UPDATE_ID = :lastUpdateID,  LAST_UPDATE_STAMP = CURRENT_TIMESTAMP,  ARREST_CHARGE_FLAG = :arrestChargeFlag,  DOJ_FLAG = :dojFlag  WHERE CHRG_CD = :chargeCode AND  CHRG_STATUTE = :chargeStatute AND  CHRG_M_F_I_FLAG = :chargeFlag AND  CJIS_CD = :cjisCode;]]></db:sql>
-					<db:input-parameters ><![CDATA[#[{
+					<db:input-parameters ><![CDATA[#[output application/json ---{
 	"chargeDesc": vars.chargeDesc,
     "chargeEffDate": vars.chargeEffDate,
     "lastUpdateID": vars.lastUpdateID,
@@ -874,9 +878,9 @@ else
         </db:update>
             </when>
             <otherwise>
-				<db:update config-ref="DB2_Config_OTS" doc:name="CHG Update2" target="chgUpdateQuery2" targetValue="#[payload.affetcedRows]">
+				<db:update config-ref="DB2_Config_OTS" doc:name="CHG Update2" target="chgUpdateQuery2" targetValue="#[payload.affectedRows]">
             <db:sql><![CDATA[UPDATE S1AOWN.S1VCHG0 SET CHRG_DESC = :chargeDesc, CHRG_EFF_DATE = :chargeEffDate,  CHRG_INACT_DATE = :chargeInactDate,    LAST_UPDATE_ID = :lastUpdateID,  LAST_UPDATE_STAMP = CURRENT_TIMESTAMP,  ARREST_CHARGE_FLAG = :arrestChargeFlag,  DOJ_FLAG = :dojFlag  WHERE CHRG_CD = :chargeCode AND  CHRG_STATUTE = :chargeStatute AND  CHRG_M_F_I_FLAG = :chargeFlag AND  CJIS_CD = :cjisCode;]]></db:sql>
-					<db:input-parameters ><![CDATA[#[{
+					<db:input-parameters ><![CDATA[#[output application/json ---{
 	"chargeDesc": vars.chargeDesc,
     "chargeInactDate": vars.chargeInactDate,
     "chargeEffDate": vars.chargeEffDate,
@@ -1000,9 +1004,9 @@ else
         <logger message="Testing" level="INFO" doc:name="Logger" />
         <choice doc:name="Choice">
             <when expression="#[vars.chargeInactDate == 'NULL']">
-				<db:update config-ref="DB2_Config_OTS" doc:name="CHG Update1" target="chgUpdateQuery1">
+				<db:update config-ref="DB2_Config_OTS" doc:name="CHG Update1" target="chgUpdateQuery1" targetValue="#[payload.affectedRows]">
             <db:sql><![CDATA[UPDATE S1AOWN.S1VCHG0 SET CHRG_DESC = :chargeDesc, CHRG_EFF_DATE = :chargeEffDate,  CHRG_INACT_DATE = NULL,   CJIS_CD = :cjisCode, LAST_UPDATE_ID = :lastUpdateID,  LAST_UPDATE_STAMP = CURRENT_TIMESTAMP,  ARREST_CHARGE_FLAG = :arrestChargeFlag,  DOJ_FLAG = :dojFlag WHERE CHRG_CD = :chargeCode AND  CHRG_STATUTE = :chargeStatute AND  CHRG_M_F_I_FLAG = :chargeFlag;]]></db:sql>
-					<db:input-parameters ><![CDATA[#[{
+					<db:input-parameters ><![CDATA[#[output application/json ---{
 	"chargeDesc": vars.chargeDesc,    
     "chargeEffDate": vars.chargeEffDate,
     "lastUpdateID": vars.lastUpdateID,
@@ -1016,9 +1020,9 @@ else
         </db:update>
             </when>
             <otherwise>
-				<db:update config-ref="DB2_Config_OTS" doc:name="CHG Update2" target="chgUpdateQuery2">
+				<db:update config-ref="DB2_Config_OTS" doc:name="CHG Update2" target="chgUpdateQuery2" targetValue="#[payload.affectedRows]">
             <db:sql><![CDATA[UPDATE S1AOWN.S1VCHG0 SET CHRG_DESC = :chargeDesc, CHRG_EFF_DATE = :chargeEffDate,  CHRG_INACT_DATE = :chargeInactDate,   CJIS_CD = :cjisCode, LAST_UPDATE_ID = :lastUpdateID,  LAST_UPDATE_STAMP = CURRENT_TIMESTAMP,  ARREST_CHARGE_FLAG = :arrestChargeFlag,  DOJ_FLAG = :dojFlag WHERE CHRG_CD = :chargeCode AND  CHRG_STATUTE = :chargeStatute AND  CHRG_M_F_I_FLAG = :chargeFlag;]]></db:sql>
-					<db:input-parameters ><![CDATA[#[{
+					<db:input-parameters ><![CDATA[#[output application/json ---{
 	"chargeDesc": vars.chargeDesc,    
     "chargeEffDate": vars.chargeEffDate,
     "chargeInactDate": vars.chargeInactDate,
@@ -1108,7 +1112,7 @@ else
         <logger message="Going for CHG Insert" level="INFO" doc:name="Logger" />
         <db:insert config-ref="DB2_Config_OTS" doc:name="CHG Insert" target="chgInsertQuery" targetValue="#[payload.affectedRows]">
             <db:sql><![CDATA[INSERT INTO S1AOWN.S1VCHG0 (CHRG_STATUTE, CHRG_M_F_I_FLAG, CHRG_CD, CHRG_DESC, CHRG_EFF_DATE, CHRG_INACT_DATE, CJIS_CD, CHRG_SECTION, CHRG_SECTION_ATT, LAST_UPDATE_ID, LAST_UPDATE_STAMP, ARREST_CHARGE_FLAG, DOJ_FLAG)    VALUES (:chargeStatute, :chargeFlag, :chargeCode, :chargeDesc, :chargeEffDate,  :chargeInactDate, :cjisCode, :chargeSection, :chargeSectionATT, :lastUpdateID, CURRENT_TIMESTAMP, :arrestChargeFlag, :dojFlag) ;]]></db:sql>
-			<db:input-parameters ><![CDATA[#[{
+			<db:input-parameters ><![CDATA[#[output application/json ---{
     "chargeDesc": vars.chargeDesc,
     "chargeEffDate": vars.chargeEffDate,
     "chargeInactDate": vars.chargeInactDate,
@@ -1190,7 +1194,7 @@ else
             <when expression="#[vars.chargeInactDate == 'NULL']">
                 <db:insert config-ref="DB2_Config_OTS" doc:name="OFF Insert1" target="offInsertQuery1" targetValue="#[payload.affectedRows]">
             <db:sql><![CDATA[INSERT INTO S1AOWN.S1VOFF0 (OFFENSE_ID, CHRG_STATUTE, CHRG_MFI_FLAG, CHRG_CD, CHRG_DESC, CJIS_CD, CHRG_EFF_DATE, CHRG_INACT_DATE, CHRG_SUM_CAT_CD,   DOJ_FLAG,   ARREST_CHARGE_FLAG, CHRG_HIERARCHY_CODE, LAST_UPDATE_ID, LAST_UPDATE_STAMP)   VALUES (:offenseID, :chargeStatute, :chargeFlag, :chargeCodeOff, :chargeDesc,  :cjisCode, :chargeEffDate, NULL, :chargeSumCatCode, :dojFlag, :arrestChargeFlag, :chargeHierarchyCode, :lastUpdateID, CURRENT_TIMESTAMP) ;]]></db:sql>
-					<db:input-parameters ><![CDATA[#[{
+					<db:input-parameters ><![CDATA[#[output application/json ---{
     "chargeDesc": vars.chargeDesc,
     "chargeEffDate": vars.chargeEffDate,
     "dojFlag": vars.dojFlag,
@@ -1224,7 +1228,7 @@ else
             <otherwise>
                 <db:insert config-ref="DB2_Config_OTS" doc:name="OFF Insert2" target="offInsertQuery2" targetValue="#[payload.affectedRows]">
             <db:sql><![CDATA[INSERT INTO S1AOWN.S1VOFF0 (OFFENSE_ID, CHRG_STATUTE, CHRG_MFI_FLAG, CHRG_CD, CHRG_DESC, CJIS_CD, CHRG_EFF_DATE, CHRG_INACT_DATE, CHRG_SUM_CAT_CD,   DOJ_FLAG,   ARREST_CHARGE_FLAG, CHRG_HIERARCHY_CODE, LAST_UPDATE_ID, LAST_UPDATE_STAMP )  VALUES (:offenseID, :chargeStatute, :chargeFlag, :chargeCodeOff, :chargeDesc,  :cjisCode, :chargeEffDate, :chargeInactDate, :chargeSumCatCode, :dojFlag, :arrestChargeFlag, :chargeHierarchyCode,  :lastUpdateID, CURRENT_TIMESTAMP );]]></db:sql>
-					<db:input-parameters ><![CDATA[#[{
+					<db:input-parameters ><![CDATA[#[output application/json ---{
     "chargeDesc": vars.chargeDesc,
     "chargeEffDate": vars.chargeEffDate,
     "chargeInactDate": vars.chargeInactDate,
@@ -1286,7 +1290,7 @@ else
                 <db:update config-ref="DB2_Config_OTS" doc:name="OFF Update1" target="offUpdateQuery1" targetValue="#[payload.affectedRows]">
             <db:sql><![CDATA[UPDATE S1AOWN.S1VOFF0 SET  CHRG_DESC = :chargeDesc,  CHRG_EFF_DATE = :chargeEffDate,  CHRG_INACT_DATE = NULL,  CJIS_CD = :cjisCode,  LAST_UPDATE_ID = :lastUpdateID,  LAST_UPDATE_STAMP = CURRENT_TIMESTAMP,  ARREST_CHARGE_FLAG = :arrestChargeFlag,  DOJ_FLAG = 'Y', VALIDATION_CODE = :validationCode, TRANSACTION_TYPE = :transactionType, DEFAULT_CHARGE_TYPE = NULL, CHRG_HIERARCHY_CODE = NULL, ALPS_COGNIZANT = NULL WHERE OFFENSE_ID =  :offenseID AND  CHRG_CD = :chargeCodeOff AND  CHRG_STATUTE = :chargeStatute AND  CHRG_MFI_FLAG = :chargeFlag;
 ]]></db:sql>
-					<db:input-parameters ><![CDATA[#[{
+					<db:input-parameters ><![CDATA[#[output application/json ---{
     "chargeDesc": vars.chargeDesc,
     "chargeEffDate": vars.chargeEffDate,
     "transactionType": vars.transactionType,
@@ -1304,7 +1308,7 @@ else
             <otherwise>
 				<db:update config-ref="DB2_Config_OTS" doc:name="OFF Update2" target="offUpdateQuery2" targetValue="#[payload.affectedRows]">
             <db:sql><![CDATA[UPDATE S1AOWN.S1VOFF0 SET  CHRG_DESC = :chargeDesc,  CHRG_EFF_DATE = :chargeEffDate,  CHRG_INACT_DATE = :chargeInactDate, CJIS_CD = :cjisCode, LAST_UPDATE_ID = :lastUpdateID,  LAST_UPDATE_STAMP = CURRENT_TIMESTAMP,  ARREST_CHARGE_FLAG = :arrestChargeFlag,  DOJ_FLAG = 'Y', VALIDATION_CODE = :validationCode, TRANSACTION_TYPE = :transactionType, DEFAULT_CHARGE_TYPE = NULL, CHRG_HIERARCHY_CODE = NULL, ALPS_COGNIZANT = NULL WHERE OFFENSE_ID =  :offenseID AND  CHRG_CD = :chargeCodeOff AND  CHRG_STATUTE = :chargeStatute AND  CHRG_MFI_FLAG = :chargeFlag;]]></db:sql>
-					<db:input-parameters ><![CDATA[#[{
+					<db:input-parameters ><![CDATA[#[output application/json ---{
     "chargeDesc": vars.chargeDesc,
     "chargeEffDate": vars.chargeEffDate,
     "chargeInactDate": vars.chargeInactDate,
@@ -1358,7 +1362,7 @@ else
             <when expression="#[vars.chargeInactDate == 'NULL']">
                 <db:update config-ref="DB2_Config_OTS" doc:name="OFF Update2" target="offUpdateQuery1">
             <db:sql><![CDATA[UPDATE S1AOWN.S1VOFF0 SET  CHRG_DESC = :chargeDesc,  CHRG_EFF_DATE = :chargeEffDate,  CHRG_INACT_DATE = NULL,   CJIS_CD = :cjisCode, LAST_UPDATE_ID = :lastUpdateID,  LAST_UPDATE_STAMP = CURRENT_TIMESTAMP,  ARREST_CHARGE_FLAG = :arrestChargeFlag,  DOJ_FLAG = 'Y', VALIDATION_CODE = :validationCode, TRANSACTION_TYPE = :transactionType, DEFAULT_CHARGE_TYPE = NULL, CHRG_HIERARCHY_CODE = NULL, ALPS_COGNIZANT = NULL WHERE OFFENSE_ID =  :offenseID AND  CHRG_CD = :chargeCodeOff AND  CHRG_STATUTE = :chargeStatute AND  CHRG_MFI_FLAG = :chargeFlag;]]></db:sql>
-					<db:input-parameters ><![CDATA[#[{
+					<db:input-parameters ><![CDATA[#[output application/json ---{
     "chargeDesc": vars.chargeDesc,
     "chargeEffDate": vars.chargeEffDate,
     "lastUpdateID": vars.lastUpdateID,
@@ -1376,7 +1380,7 @@ else
             <otherwise>
                 <db:update config-ref="DB2_Config_OTS" doc:name="OFF Update2" target="offUpdateQuery2">
             <db:sql><![CDATA[UPDATE S1AOWN.S1VOFF0 SET  CHRG_DESC = :chargeDesc,  CHRG_EFF_DATE = :chargeEffDate,  CHRG_INACT_DATE = :chargeInactDate, CJIS_CD = :cjisCode,  LAST_UPDATE_ID = :lastUpdateID,  LAST_UPDATE_STAMP = CURRENT_TIMESTAMP,  ARREST_CHARGE_FLAG = :arrestChargeFlag,  DOJ_FLAG = 'Y', VALIDATION_CODE = :validationCode, TRANSACTION_TYPE = :transactionType, DEFAULT_CHARGE_TYPE = NULL, CHRG_HIERARCHY_CODE = NULL, ALPS_COGNIZANT = NULL WHERE OFFENSE_ID =  :offenseID AND  CHRG_CD = :chargeCodeOff AND  CHRG_STATUTE = :chargeStatute AND  CHRG_MFI_FLAG = :chargeFlag;]]></db:sql>
-					<db:input-parameters ><![CDATA[#[{
+					<db:input-parameters ><![CDATA[#[output application/json ---{
     "chargeDesc": vars.chargeDesc,
     "chargeEffDate": vars.chargeEffDate,
     "chargeInactDate": vars.chargeInactDate,
